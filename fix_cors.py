@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 def update_cors_origins():
-    base_dir = Path("/Users/deiverjc/Code/reservat/reservat-backend")
+    base_dir = Path("/Users/postgres/Code/reservat/reservat-backend")
     
     # Buscar todos los archivos app.py en los microservicios
     app_files = list(base_dir.glob("ms_*/src/app.py"))
