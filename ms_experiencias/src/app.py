@@ -23,7 +23,9 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicios experiencias",
     description="API de gestión para las experiencias de los servicios en ReservaT",
-    debug=True
+    debug=True,
+    docs_url="/experiencias/docs",
+    openapi_url="/experiencias/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -81,4 +83,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de experiencias 
-app.include_router( experiencias, prefix="/api/v1", tags=["Experiencias de servicios"])
+app.include_router( experiencias, prefix="", tags=["Experiencias de servicios"])

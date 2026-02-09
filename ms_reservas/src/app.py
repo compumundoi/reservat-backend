@@ -23,7 +23,9 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de reservas para servicios",
     description="API de gestión para las reservas de los servicios en ReservaT",
-    debug=True
+    debug=True,
+    docs_url="/reservas/docs",
+    openapi_url="/reservas/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -81,4 +83,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de reservas 
-app.include_router( reservas, prefix="/api/v1", tags=["Reserva de servicios"])
+app.include_router( reservas, prefix="", tags=["Reserva de servicios"])

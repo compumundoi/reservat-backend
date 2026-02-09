@@ -23,7 +23,9 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de bloqueo de fechas",
     description="API para gestión de bloqueo de fechas en ReservaT",
-    debug=True
+    debug=True,
+    docs_url="/fechas-bloqueadas/docs",
+    openapi_url="/fechas-bloqueadas/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -81,4 +83,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de fechas bloqueadas
-app.include_router( fechas, prefix="/api/v1", tags=["Fechas bloqueadas"])
+app.include_router( fechas, prefix="", tags=["Fechas bloqueadas"])

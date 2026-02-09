@@ -30,6 +30,7 @@ origins = [
     "https://dashboard.reservatonline.com",
     "https://proveedores.reservatonline.com",
     "https://reservatonline.com",
+    "http://dashboard.reservatonline.com:8000",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",

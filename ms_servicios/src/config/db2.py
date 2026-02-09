@@ -65,7 +65,7 @@ class DB:
     def create_engine(self):
         import os
         # Prioridad: 1. Variables de entorno, 2. Valores por defecto (local)
-        db_user = os.getenv('DB_USER', 'deiverjc')
+        db_user = os.getenv('DB_USER', 'postgres')
         db_password = os.getenv('DB_PASSWORD', '')
         db_host = os.getenv('DB_HOST', 'localhost')
         db_port = os.getenv('DB_PORT', '5432')

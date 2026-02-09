@@ -21,7 +21,9 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de Mayoristas",
     description="API para gestión de mayoristas en ReservaT",
-    debug=True
+    debug=True,
+    docs_url="/mayoristas/docs",
+    openapi_url="/mayoristas/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -79,4 +81,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de mayoristas
-app.include_router(mayorista, prefix="/api/v1", tags=["Mayoristas"])
+app.include_router(mayorista, prefix="", tags=["Mayoristas"])

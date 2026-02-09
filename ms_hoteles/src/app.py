@@ -23,7 +23,9 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de hoteles para servicios",
     description="API de gestión para las hoteles de los servicios en ReservaT",
-    debug=True
+    debug=True,
+    docs_url="/hoteles/docs",
+    openapi_url="/hoteles/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -81,4 +83,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de fotos 
-app.include_router( hoteles, prefix="/api/v1", tags=["Hotel de servicios"])
+app.include_router( hoteles, prefix="", tags=["Hotel de servicios"])
