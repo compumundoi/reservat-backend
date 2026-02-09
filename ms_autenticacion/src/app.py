@@ -22,7 +22,10 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de Autenticación",
     description="API de autenticación para ReservaT",
-    debug=True
+    debug=True,
+    root_path="/api/v1",
+    docs_url="/usuarios/docs",
+    openapi_url="/usuarios/openapi.json"
 )
 
 # Agrega aquí tu dominio del frontend
@@ -78,4 +81,4 @@ async def some_middleware(request: Request, call_next):
                     headers=dict(response.headers), media_type=response.media_type, background=task)
 
 # Incluir el router de usuarios
-app.include_router(user, prefix="/api/v1", tags=["usuarios"])
+app.include_router(user, prefix="", tags=["usuarios"])

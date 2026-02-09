@@ -24,6 +24,7 @@ app = FastAPI(
     title="Servicio de hoteles para servicios",
     description="API de gestión para las hoteles de los servicios en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/hoteles/docs",
     openapi_url="/hoteles/openapi.json"
 )
@@ -31,6 +32,7 @@ app = FastAPI(
 # Agrega aquí tu dominio del frontend
 origins = [
     "https://dashboard.reservatonline.com",
+    "http://dashboard.reservatonline.com:8000",
     "https://proveedores.reservatonline.com",
     "https://reservatonline.com",
     "http://localhost:3000",

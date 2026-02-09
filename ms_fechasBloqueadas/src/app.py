@@ -24,6 +24,7 @@ app = FastAPI(
     title="Servicio de bloqueo de fechas",
     description="API para gestión de bloqueo de fechas en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/fechas-bloqueadas/docs",
     openapi_url="/fechas-bloqueadas/openapi.json"
 )

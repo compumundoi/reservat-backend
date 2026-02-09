@@ -23,6 +23,7 @@ app = FastAPI(
     title="Servicio de viajes para servicios",
     description="API de gestión para las viajes de los servicios en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/viajes/docs",
     openapi_url="/viajes/openapi.json"
 )

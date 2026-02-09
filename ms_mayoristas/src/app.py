@@ -22,6 +22,7 @@ app = FastAPI(
     title="Servicio de Mayoristas",
     description="API para gestión de mayoristas en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/mayoristas/docs",
     openapi_url="/mayoristas/openapi.json"
 )

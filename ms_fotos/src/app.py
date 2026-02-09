@@ -24,6 +24,7 @@ app = FastAPI(
     title="Servicio de fotos para servicios",
     description="API de gestión para las fotos de los servicios en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/fotos/docs",
     openapi_url="/fotos/openapi.json"
 )

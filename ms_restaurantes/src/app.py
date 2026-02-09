@@ -24,6 +24,7 @@ app = FastAPI(
     title="Servicio de restaurantes para servicios",
     description="API de gestión para las restaurantes de los servicios en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/restaurantes/docs",
     openapi_url="/restaurantes/openapi.json"
 )

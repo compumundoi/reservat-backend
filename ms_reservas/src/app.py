@@ -24,6 +24,7 @@ app = FastAPI(
     title="Servicio de reservas para servicios",
     description="API de gestión para las reservas de los servicios en ReservaT",
     debug=True,
+    root_path="/api/v1",
     docs_url="/reservas/docs",
     openapi_url="/reservas/openapi.json"
 )
