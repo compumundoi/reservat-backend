@@ -63,16 +63,23 @@ class DB:
         }
 
     def create_engine(self):
-        credentials = self.get_credentials()
+        import os
+        # Prioridad: 1. Variables de entorno, 2. Valores por defecto (local)
+        db_user = os.getenv('DB_USER', 'deiverjc')
+        db_password = os.getenv('DB_PASSWORD', '')
+        db_host = os.getenv('DB_HOST', 'localhost')
+        db_port = os.getenv('DB_PORT', '5432')
+        db_name = os.getenv('DB_NAME', 'reservat')
         
         try:
+            logger.info(f"Conectando a la base de datos en {db_host}:{db_port}/{db_name} como {db_user}")
             engine = create_engine('{engine}://{user}:{password}@{host}:{port}/{database}'.format(
                 engine='postgresql+psycopg2',
-                user=credentials['user'],
-                password=credentials['password'],
-                host=credentials['host'],
-                port=credentials['port'],
-                database=credentials['database']
+                user=db_user,
+                password=db_password,
+                host=db_host,
+                port=db_port,
+                database=db_name
             ),
                 pool_size=200,
                 max_overflow=0,

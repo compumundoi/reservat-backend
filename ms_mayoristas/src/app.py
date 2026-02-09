@@ -29,7 +29,10 @@ origins = [
     "https://dashboard.reservatonline.com",
     "https://proveedores.reservatonline.com",
     "https://reservatonline.com",
-    "http://localhost:3000",  # opcional para desarrollo local
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:5173",  # opcional para desarrollo local
 ]
 
 app.add_middleware(
