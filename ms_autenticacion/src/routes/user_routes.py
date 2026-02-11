@@ -86,17 +86,29 @@ async def login_user(request: LoginRequest, db: Session = Depends(get_db), respo
         user.ultimo_login = datetime.now()
         db.commit()
 
+        # Default values from the base user model
+        userEmail = user.email
+        userId = user.id
+        tipo_u = user.tipo_usuario
+
         if user.tipo_usuario == "proveedor":
             db_user = db.query(ProveedorModel).filter(ProveedorModel.email == request.email).first()  
-            userEmail = db_user.email
-            userId = db_user.id_proveedor
-            tipo_u = db_user.tipo
+            if db_user:
+                userEmail = db_user.email
+                userId = db_user.id_proveedor
+                tipo_u = db_user.tipo
+            else:
+                logger.warning(f"User with role 'proveedor' not found in proveedores table: {request.email}")
             
         elif user.tipo_usuario == "mayorista":
             db_user = db.query(MayoristaModel).filter(MayoristaModel.email == request.email).first()
-            userEmail = db_user.email
-            userId = db_user.id
-            tipo_u = user.tipo_usuario
+            if db_user:
+                userEmail = db_user.email
+                userId = db_user.id
+                tipo_u = user.tipo_usuario
+            else:
+                logger.warning(f"User with role 'mayorista' not found in mayoristas table: {request.email}")
+
         
         # Generar token JWT
         expire = datetime.utcnow() + timedelta(minutes=JWT_EXPIRATION_MINUTES)
@@ -142,17 +154,7 @@ async def login_user(request: LoginRequest, db: Session = Depends(get_db), respo
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno del servidor"
         )
-        
-    except HTTPException as e:
-        logger.error(f"Error en login: {str(e.detail)}")
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error inesperado en login: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno del servidor"
-        )
+
 
 # Endpoint de Registro
 @user.post("/usuarios/crear/", response_model=ResponseMessage)
@@ -312,7 +314,8 @@ def check_readiness(db: Session = Depends(get_db)):
 
 # Endpoint de Login administrador
 @user.post("/usuarios/admin", response_model=Token)
-async def login_user(request: LoginRequest, db: Session = Depends(get_db), response: Response = None):
+async def login_admin(request: LoginRequest, db: Session = Depends(get_db), response: Response = None):
+
     try:
         # Verificar si el email existe
         user = db.query(UserModel).filter(UserModel.email == request.email).first()
@@ -396,14 +399,4 @@ async def login_user(request: LoginRequest, db: Session = Depends(get_db), respo
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno del servidor"
         )
-        
-    except HTTPException as e:
-        logger.error(f"Error en login: {str(e.detail)}")
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error inesperado en login: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno del servidor"
-        )
+
