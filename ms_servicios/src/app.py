@@ -41,13 +41,7 @@ origins = [
     "http://localhost:5173",  # opcional para desarrollo local
 ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # O usa ["*"] si quieres permitir todo (no recomendado en producción)
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configuración de CORS se movió abajo para ser el middleware más externo
 
 add_pagination(app)
 status_reasons = {x.value: x.name for x in list(HTTPStatus)}
@@ -68,6 +62,10 @@ async def set_body(request: Request, body: bytes):
 
 @app.middleware('http')
 async def some_middleware(request: Request, call_next):
+    # No procesar preflights de CORS en el middleware de logging
+    if request.method == "OPTIONS":
+        return await call_next(request)
+        
     req_body = await request.body()
     await set_body(request, req_body)
     response = await call_next(request)
@@ -83,6 +81,15 @@ async def some_middleware(request: Request, call_next):
     task = BackgroundTask(log_info, req_body, res_body, informacion)
     return Response(content=res_body, status_code=response.status_code,
                     headers=dict(response.headers), media_type=response.media_type, background=task)
+
+# Configurar CORS como el middleware más externo (agregado al final)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Incluir el router de servicios 
 app.include_router( servicios, prefix="", tags=["Servicios"])

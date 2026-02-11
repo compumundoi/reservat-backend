@@ -5,6 +5,7 @@ from starlette.background import BackgroundTask
 from starlette.types import Message
 from fastapi_pagination import add_pagination
 from fastapi.middleware.cors import CORSMiddleware
+from routes.mayorista_routes import mayorista
 
 # Configurar logging
 logging.basicConfig(
@@ -27,31 +28,19 @@ app = FastAPI(
     openapi_url="/mayoristas/openapi.json"
 )
 
-# Agrega aquí tu dominio del frontend
+# Orígenes
 origins = [
-    "https://dashboard.reservatonline.com",
     "http://dashboard.reservatonline.com:8000",
+    "https://dashboard.reservatonline.com",
     "https://proveedores.reservatonline.com",
     "https://reservatonline.com",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",
-    "http://localhost:5173",  # opcional para desarrollo local
 ]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # O usa ["*"] si quieres permitir todo (no recomendado en producción)
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 add_pagination(app)
 status_reasons = {x.value: x.name for x in list(HTTPStatus)}
-
-# Importar rutas después de crear la aplicación
-from .routes.mayorista_routes import mayorista
 
 def log_info(req_body, res_body, informacion):
     logging.info(req_body)
@@ -61,11 +50,14 @@ def log_info(req_body, res_body, informacion):
 async def set_body(request: Request, body: bytes):
     async def receive() -> Message:
         return {'type': 'http.request', 'body': body}
-
     request._receive = receive
 
 @app.middleware('http')
 async def some_middleware(request: Request, call_next):
+    # No procesar preflights de CORS en el middleware de logging
+    if request.method == "OPTIONS":
+        return await call_next(request)
+        
     req_body = await request.body()
     await set_body(request, req_body)
     response = await call_next(request)
@@ -74,13 +66,22 @@ async def some_middleware(request: Request, call_next):
     async for chunk in response.body_iterator:
         res_body += chunk
 
-    informacion = {"Respuesta: " + status_reasons.get(response.status_code), "URL: " + request.url.path,
+    informacion = {"Respuesta: " + status_reasons.get(response.status_code, "Unknown"), "URL: " + str(request.url),
                    "Metodo: " + request.method,
                    "Headers: " + str(request.headers)}
 
     task = BackgroundTask(log_info, req_body, res_body, informacion)
     return Response(content=res_body, status_code=response.status_code,
                     headers=dict(response.headers), media_type=response.media_type, background=task)
+
+# Configurar CORS como el middleware más externo (agregado al final)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Incluir el router de mayoristas
 app.include_router(mayorista, prefix="", tags=["Mayoristas"])
