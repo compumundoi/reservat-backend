@@ -4,36 +4,36 @@ from datetime import datetime, time
 from uuid import UUID
 
 class DatosProveedor(BaseModel):
-    tipo: str
-    nombre: str
-    descripcion: str
-    email: str
-    telefono: str
-    direccion: str
-    ciudad: str
-    pais: str
-    sitio_web: str
-    rating_promedio: int 
-    verificado: bool
-    fecha_registro: datetime
-    ubicacion: str
-    redes_sociales: str
-    relevancia: str
-    usuario_creador: str
-    tipo_documento: str
-    numero_documento: str         
-    activo: bool  
+    tipo: Optional[str] = None
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    ciudad: Optional[str] = None
+    pais: Optional[str] = None
+    sitio_web: Optional[str] = None
+    rating_promedio: Optional[float] = 0 
+    verificado: bool = True
+    fecha_registro: Optional[datetime] = None
+    ubicacion: Optional[str] = None
+    redes_sociales: Optional[str] = None
+    relevancia: Optional[str] = None
+    usuario_creador: Optional[str] = None
+    tipo_documento: Optional[str] = None
+    numero_documento: Optional[str] = None         
+    activo: bool = True
 
 class DatosExperiencia(BaseModel):
-    duracion: int
-    dificultad: str
-    idioma: str
-    incluye_transporte: bool
-    grupo_maximo: int
-    guia_incluido: bool
-    equipamiento_requerido: str
-    punto_de_encuentro: str
-    numero_rnt: str
+    duracion: Optional[int] = 0
+    dificultad: Optional[str] = None
+    idioma: Optional[str] = None
+    incluye_transporte: Optional[bool] = False
+    grupo_maximo: Optional[int] = 0
+    guia_incluido: Optional[bool] = False
+    equipamiento_requerido: Optional[str] = None
+    punto_de_encuentro: Optional[str] = None
+    numero_rnt: Optional[str] = None
 
 class CrearExperienciaRequest(BaseModel):
     proveedor: DatosProveedor
@@ -43,37 +43,37 @@ class CrearExperienciaRequest(BaseModel):
 
 class ListarDatosProveedor(BaseModel):
     id_proveedor: UUID
-    tipo: str
-    nombre: str
-    descripcion: str
-    email: str
-    telefono: str
-    direccion: str
-    ciudad: str
-    pais: str
-    sitio_web: str
-    rating_promedio: int 
-    verificado: bool
-    fecha_registro: datetime
-    ubicacion: str
-    redes_sociales: str
-    relevancia: str
-    usuario_creador: str
-    tipo_documento: str
-    numero_documento: str         
-    activo: bool  
+    tipo: Optional[str] = None
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    ciudad: Optional[str] = None
+    pais: Optional[str] = None
+    sitio_web: Optional[str] = None
+    rating_promedio: Optional[float] = 0 
+    verificado: bool = True
+    fecha_registro: Optional[datetime] = None
+    ubicacion: Optional[str] = None
+    redes_sociales: Optional[str] = None
+    relevancia: Optional[str] = None
+    usuario_creador: Optional[str] = None
+    tipo_documento: Optional[str] = None
+    numero_documento: Optional[str] = None         
+    activo: bool = True
 
 class ListarDatosExperiencia(BaseModel):
     id_experiencia: UUID
-    duracion: int
-    dificultad: str
-    idioma: str
-    incluye_transporte: bool
-    grupo_maximo: int
-    guia_incluido: bool
-    equipamiento_requerido: str
-    punto_de_encuentro: str
-    numero_rnt: str
+    duracion: Optional[int] = 0
+    dificultad: Optional[str] = None
+    idioma: Optional[str] = None
+    incluye_transporte: Optional[bool] = False
+    grupo_maximo: Optional[int] = 0
+    guia_incluido: Optional[bool] = False
+    equipamiento_requerido: Optional[str] = None
+    punto_de_encuentro: Optional[str] = None
+    numero_rnt: Optional[str] = None
 
 class ListarExperienciaResponse(BaseModel):
     proveedor: ListarDatosProveedor
