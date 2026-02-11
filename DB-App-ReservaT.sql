@@ -135,6 +135,13 @@ CREATE TABLE usr_app.mayoristas (
     intereses text,
     tipo_documento character varying NOT NULL,
     numero_documento character varying NOT NULL,
+    contacto_principal character varying,
+    telefono_contacto character varying,
+    email_contacto character varying,
+    comision_porcentaje double precision,
+    limite_credito double precision,
+    estado character varying DEFAULT 'activo'::character varying,
+    observaciones text,
     activo boolean DEFAULT true,
     fecha_actualizacion timestamp with time zone
 );

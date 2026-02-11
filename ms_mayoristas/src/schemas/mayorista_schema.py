@@ -5,7 +5,7 @@ from uuid import UUID
 
 class DatosMayorista(BaseModel):
     nombre: str
-    apellidos: str
+    apellidos: Optional[str] = None
     descripcion: Optional[str] = None
     email: str
     telefono: str
@@ -13,11 +13,18 @@ class DatosMayorista(BaseModel):
     ciudad: str
     pais: str
     recurente: bool = False
-    usuario_creador: str
+    usuario_creador: Optional[str] = None
     verificado: bool = False
     intereses: Optional[str] = None
     tipo_documento: str
     numero_documento: str
+    contacto_principal: Optional[str] = None
+    telefono_contacto: Optional[str] = None
+    email_contacto: Optional[str] = None
+    comision_porcentaje: Optional[float] = 0
+    limite_credito: Optional[float] = 0
+    estado: Optional[str] = "activo"
+    observaciones: Optional[str] = None
     activo: bool = True
 
 class ActualizarMayorista(BaseModel):
@@ -35,6 +42,13 @@ class ActualizarMayorista(BaseModel):
     intereses: Optional[str] = None
     tipo_documento: Optional[str] = None
     numero_documento: Optional[str] = None
+    contacto_principal: Optional[str] = None
+    telefono_contacto: Optional[str] = None
+    email_contacto: Optional[str] = None
+    comision_porcentaje: Optional[float] = None
+    limite_credito: Optional[float] = None
+    estado: Optional[str] = None
+    observaciones: Optional[str] = None
     activo: Optional[bool] = None
 
 
