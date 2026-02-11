@@ -32,6 +32,7 @@ app = FastAPI(
 # Agrega aquí tu dominio del frontend
 origins = [
     "https://dashboard.reservatonline.com",
+    "http://dashboard.reservatonline.com:8000",
     "https://proveedores.reservatonline.com",
     "https://reservatonline.com",
     "http://localhost:3000",
