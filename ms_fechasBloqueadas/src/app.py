@@ -1,3 +1,4 @@
+import os
 import logging
 from http import HTTPStatus
 from fastapi import FastAPI, Request, Response
@@ -22,18 +23,23 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicio de bloqueo de fechas",
     description="API para gestión de bloqueo de fechas en ReservaT",
-    debug=True,
+    debug=os.getenv("DEBUG", "false").lower() == "true",
     root_path="/api/v1",
     docs_url="/fechas-bloqueadas/docs",
     openapi_url="/fechas-bloqueadas/openapi.json"
 )
 
-# Orígenes
+# Orígenes permitidos para CORS
 origins = [
-    "http://dashboard.reservatonline.com:8000",
+    # Producción
+    "https://reservatonline.com",
+    "https://www.reservatonline.com",
     "https://dashboard.reservatonline.com",
     "https://proveedores.reservatonline.com",
-    "https://reservatonline.com",
+    # Desarrollo local
+    "http://reservatonline.com:8000",
+    "http://dashboard.reservatonline.com:8000",
+    "http://proveedores.reservatonline.com:8000",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",

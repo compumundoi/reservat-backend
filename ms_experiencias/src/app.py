@@ -1,3 +1,4 @@
+import os
 import logging
 from http import HTTPStatus
 from fastapi import FastAPI, Request, Response
@@ -23,23 +24,27 @@ logger.setLevel(logging.DEBUG)
 app = FastAPI(
     title="Servicios experiencias",
     description="API de gestión para las experiencias de los servicios en ReservaT",
-    debug=True,
+    debug=os.getenv("DEBUG", "false").lower() == "true",
     root_path="/api/v1",
     docs_url="/experiencias/docs",
     openapi_url="/experiencias/openapi.json"
 )
 
-# Agrega aquí tu dominio del frontend
+# Orígenes permitidos para CORS
 origins = [
-    "https://dashboard.reservatonline.com",
-    "http://dashboard.reservatonline.com:8000",
-    "https://proveedores.reservatonline.com",
-    "http://proveedores.reservatonline.com:8000",
+    # Producción
     "https://reservatonline.com",
+    "https://www.reservatonline.com",
+    "https://dashboard.reservatonline.com",
+    "https://proveedores.reservatonline.com",
+    # Desarrollo local
+    "http://reservatonline.com:8000",
+    "http://dashboard.reservatonline.com:8000",
+    "http://proveedores.reservatonline.com:8000",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",
-    "http://localhost:5173",  # opcional para desarrollo local
+    "http://localhost:5173",
 ]
 
 # Configuración de CORS se movió abajo para ser el middleware más externo
