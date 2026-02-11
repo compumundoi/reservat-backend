@@ -239,11 +239,13 @@ CREATE TABLE IF NOT EXISTS reservas (
     tipo_servicio character varying,
     precio character varying,
     ciudad character varying,
-    activo character varying,
+    activo boolean DEFAULT true,
     estado character varying,
     observaciones character varying,
     fecha_creacion date,
-    cantida integer
+    cantidad integer,
+    fecha_inicio date,
+    fecha_fin date
 );
 
 -- ============================================
