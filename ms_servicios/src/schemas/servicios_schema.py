@@ -1,40 +1,40 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
 
 class DatosServicio(BaseModel):
     proveedor_id: UUID
-    nombre: str
-    descripcion: str
-    tipo_servicio: str
-    precio: int
-    moneda: str
-    activo: bool
-    fecha_creacion: datetime
-    fecha_actualizacion: datetime
-    relevancia: str
-    ciudad: str
-    departamento: str
-    ubicacion: str
-    detalles_del_servicio: str
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    tipo_servicio: Optional[str] = None
+    precio: float
+    moneda: Optional[str] = "USD"
+    activo: bool = True
+    fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
+    fecha_actualizacion: Optional[datetime] = None
+    relevancia: Optional[str] = None
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    ubicacion: Optional[str] = None
+    detalles_del_servicio: Optional[str] = None
     
 class ActualizarServicio(BaseModel):
     id_servicio: UUID
     proveedor_id: UUID
-    nombre: str
-    descripcion: str
-    tipo_servicio: str
-    precio: int
-    moneda: str
-    activo: bool
-    fecha_creacion: datetime
-    fecha_actualizacion: datetime
-    relevancia: str
-    ciudad: str
-    departamento: str
-    ubicacion: str
-    detalles_del_servicio: str
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    tipo_servicio: Optional[str] = None
+    precio: Optional[float] = None
+    moneda: Optional[str] = None
+    activo: Optional[bool] = None
+    fecha_creacion: Optional[datetime] = None
+    fecha_actualizacion: Optional[datetime] = None
+    relevancia: Optional[str] = None
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    ubicacion: Optional[str] = None
+    detalles_del_servicio: Optional[str] = None
 
 class RespuestaServicio(DatosServicio):
     id_servicio: UUID

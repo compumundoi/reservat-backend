@@ -57,7 +57,7 @@ async def crear_servicio(servicio: DatosServicio, db: Session = Depends(get_db))
 async def listar_servicios(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
-        skip = (pagina - 1) * pagina
+        skip = pagina * limite
         total = db.query(ServicioModel).filter(ServicioModel.activo == True).count()
         servicios = db.query(ServicioModel).filter(ServicioModel.activo == True).offset(skip).limit(limite).all()
                 
@@ -87,7 +87,7 @@ async def listar_fotos(id_proveedor: str, pagina: int = 0, limite: int = 100, db
             detail="el proveedor no existe"
         )
     try:
-        skip = (pagina - 1) * pagina
+        skip = pagina * limite
         total = db.query(ServicioModel).filter(ServicioModel.activo == True, ServicioModel.proveedor_id == id_proveedor).count()
         servicios = db.query(ServicioModel).filter(ServicioModel.activo == True, ServicioModel.proveedor_id == id_proveedor).offset(skip).limit(limite).all()
         
