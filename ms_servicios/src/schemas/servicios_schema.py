@@ -50,3 +50,16 @@ class ResponseList(BaseModel):
     total: int
     page: int
     size: int
+
+class ServicioBusqueda(BaseModel):
+    id_servicio: UUID
+    nombre: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ResponseBusquedaServicios(BaseModel):
+    servicios: List[ServicioBusqueda]
+    total: int
+    page: int
+    size: int

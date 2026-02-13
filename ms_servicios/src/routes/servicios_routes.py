@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.servicios_model import ServicioModel, ProveedorModel
-from schemas.servicios_schema import DatosServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList
+from schemas.servicios_schema import DatosServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList, ServicioBusqueda, ResponseBusquedaServicios
 from typing import List
 from pydantic import ValidationError
 
@@ -196,3 +196,44 @@ def check_readiness(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error en readiness check: {str(e)}")
         return {"status": "Not Ready"}
+
+# Endpoint de búsqueda por nombre
+@servicios.get("/servicios/buscar/", response_model=ResponseBusquedaServicios)
+async def buscar_servicios(
+    search: str = "",
+    pagina: int = 0,
+    limite: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Buscar servicios por nombre con paginación"""
+    try:
+        if limite > 10:
+            limite = 10
+
+        query = db.query(ServicioModel)
+
+        if search.strip():
+            query = query.filter(ServicioModel.nombre.ilike(f"%{search.strip()}%"))
+
+        total = query.count()
+        servicios_list = query.offset(pagina * limite).limit(limite).all()
+
+        resultados = [
+            ServicioBusqueda(
+                id_servicio=s.id_servicio,
+                nombre=s.nombre
+            ) for s in servicios_list
+        ]
+
+        return ResponseBusquedaServicios(
+            servicios=resultados,
+            total=total,
+            page=pagina,
+            size=limite
+        )
+    except Exception as e:
+        logger.error(f"Error en búsqueda de servicios: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al buscar servicios"
+        )
