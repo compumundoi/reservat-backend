@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, time
 from uuid import UUID
 
@@ -27,7 +27,7 @@ class DatosProveedor(BaseModel):
 class DatosTransporte(BaseModel):
     tipo_vehiculo: str
     modelo: str
-    anio: int
+    anio: int = Field(..., ge=1900, le=2100)
     placa: str
     capacidad: int
     aire_acondicionado: bool
@@ -70,7 +70,7 @@ class ListarDatosTransporte(BaseModel):
     id_transporte: UUID
     tipo_vehiculo: str
     modelo: str
-    anio: int
+    anio: int = Field(..., ge=1900, le=2100)
     placa: str
     capacidad: int
     aire_acondicionado: bool
