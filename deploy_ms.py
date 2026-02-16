@@ -25,8 +25,8 @@ def run_command(command, cwd=None):
     return result.returncode == 0
 
 def deploy_microservices():
-    # Buscar carpetas que empiecen con ms_
-    ms_dirs = [d for d in BASE_DIR.iterdir() if d.is_dir() and d.name.startswith("ms_")]
+    # Buscar carpetas que empiecen con ms_ o la carpeta mcp_server
+    ms_dirs = [d for d in BASE_DIR.iterdir() if d.is_dir() and (d.name.startswith("ms_") or d.name == "mcp_server")]
     
     # Ordenar por nombre para consistencia
     ms_dirs.sort(key=lambda x: x.name)
