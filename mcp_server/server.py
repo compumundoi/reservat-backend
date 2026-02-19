@@ -67,6 +67,8 @@ mcp = FastMCP(
         "Todas las tools requieren el parámetro 'api_key' para autenticación. "
         "La tabla de usuarios está EXCLUIDA por seguridad."
     ),
+    host=MCP_HOST,
+    port=MCP_PORT,
 )
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -890,4 +892,4 @@ if __name__ == "__main__":
     logger.info(
         f"🚀 Iniciando MCP Server de ReservaT en http://{MCP_HOST}:{MCP_PORT}/sse"
     )
-    mcp.run(transport="sse", host=MCP_HOST, port=MCP_PORT)
+    mcp.run(transport="sse")
