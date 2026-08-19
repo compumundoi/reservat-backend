@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.fechas_model import FechaBloqueada, Servicio
 from schemas.fechas_schema import DatosFechaBloqueada, ActualizarFechaBloqueada, RespuestaFechaBloqueada, ResponseMessage, ResponseList
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -27,6 +27,13 @@ def get_db():
         db.close()
 
 fechas = APIRouter()
+
+def _con_nombre_servicio(fecha, nombre=None):
+    """Adjunta el nombre del servicio a la respuesta de la fecha bloqueada."""
+    datos = RespuestaFechaBloqueada.model_validate(fecha).model_dump()
+    datos["servicio_nombre"] = nombre
+    return RespuestaFechaBloqueada(**datos)
+
 
 @fechas.post("/fechas/crear/", response_model=ResponseMessage)
 async def crear_fecha(fecha: DatosFechaBloqueada, db: Session = Depends(get_db)):
@@ -59,15 +66,59 @@ async def crear_fecha(fecha: DatosFechaBloqueada, db: Session = Depends(get_db))
             detail="Error al bloquear la fecha"
         )
 
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado de fechas bloqueadas.
+
+    unaccent en ambos lados: quien escribe sin tildes espera encontrar
+    igual. Devuelve None cuando no hay termino.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        FechaBloqueada.motivo,
+        FechaBloqueada.bloqueado_por,
+        Servicio.nombre,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @fechas.get("/fechas/listar/", response_model=ResponseList)
-async def listar_mayoristas(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_fechas_bloqueadas(
+    pagina: int = 0,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
-        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
-        # saltaba registros. El frontend envia paginas 0-based.
+        # (pagina - 1) * pagina devolvia registros equivocados.
+        # El frontend envia paginas 0-based.
         skip = max(0, pagina) * limite
-        total = db.query(FechaBloqueada).filter(FechaBloqueada.bloqueo_activo == True).count()
-        fechas_bloqueadas = db.query(FechaBloqueada).filter(FechaBloqueada.bloqueo_activo == True).offset(skip).limit(limite).all()
+
+        filtros = [FechaBloqueada.bloqueo_activo == True]
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # El conteo repite el outerjoin porque la busqueda toca el nombre
+        # del servicio, que vive en la otra tabla.
+        total = (
+            db.query(FechaBloqueada)
+            .outerjoin(Servicio, FechaBloqueada.servicio_id == Servicio.id_servicio)
+            .filter(*filtros)
+            .count()
+        )
+        filas = (
+            db.query(FechaBloqueada, Servicio.nombre)
+            .outerjoin(Servicio, FechaBloqueada.servicio_id == Servicio.id_servicio)
+            .filter(*filtros)
+            .offset(skip)
+            .limit(limite)
+            .all()
+        )
+        fechas_bloqueadas = [_con_nombre_servicio(f, nombre) for f, nombre in filas]
         
         return ResponseList(
             fechas_bloqueadas=fechas_bloqueadas,

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.rutas_model import RutaModel
 from schemas.rutas_schema import DatosRuta, ActualizarRuta, RespuestaRuta, ResponseMessage, ResponseList, DatosOrigenDestino
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -47,15 +47,47 @@ async def crear_ruta(ruta: DatosRuta, db: Session = Depends(get_db)):
             detail="Error al crear la ruta"
         )
 
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado.
+
+    unaccent en ambos lados: quien escribe sin tildes espera encontrar
+    igual. Devuelve None cuando no hay termino, para que el listado sin
+    busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        RutaModel.nombre,
+        RutaModel.descripcion,
+        RutaModel.origen,
+        RutaModel.destino,
+        RutaModel.puntos_interes,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @rutas.get("/rutas/listar/", response_model=ResponseList)
-async def listar_rutas(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_rutas(
+    pagina: int = 0,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
         # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
         # saltaba registros. El frontend envia paginas 0-based.
         skip = max(0, pagina) * limite
-        total = db.query(RutaModel).filter(RutaModel.activo == True).count()
-        rutas = db.query(RutaModel).filter(RutaModel.activo == True).offset(skip).limit(limite).all()
+        filtros = [RutaModel.activo == True]
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # Mismo filtro en el conteo y en la pagina.
+        total = db.query(RutaModel).filter(*filtros).count()
+        rutas = db.query(RutaModel).filter(*filtros).offset(skip).limit(limite).all()
         
         return ResponseList(
             rutas=rutas,

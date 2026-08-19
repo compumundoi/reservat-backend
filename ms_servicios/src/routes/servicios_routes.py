@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.servicios_model import ServicioModel, ProveedorModel
 from schemas.servicios_schema import DatosServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList, ServicioBusqueda, ResponseBusquedaServicios
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -27,6 +27,32 @@ def get_db():
         db.close()
 
 servicios = APIRouter()
+
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado de servicios.
+
+    Cubre los mismos campos que antes se filtraban en el cliente, incluidos
+    el nombre y el email del proveedor. Devuelve None cuando no hay termino,
+    para que el listado sin busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    # unaccent en ambos lados de la comparacion: quien busca "pasadia" o
+    # "medellin" sin tilde espera encontrar "Pasadia" y "Medellin". En
+    # castellano nadie escribe las tildes en un buscador.
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        ServicioModel.nombre,
+        ServicioModel.descripcion,
+        ServicioModel.tipo_servicio,
+        ServicioModel.ciudad,
+        ServicioModel.departamento,
+        ProveedorModel.nombre,
+        ProveedorModel.email,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
 
 def _con_datos_proveedor(servicio, nombre=None, email=None):
     """Adjunta el nombre y el email del proveedor a la respuesta del servicio."""
@@ -85,12 +111,37 @@ async def crear_servicio(servicio: DatosServicio, db: Session = Depends(get_db))
         )
 
 @servicios.get("/servicios/listar/", response_model=ResponseList)
-async def listar_servicios(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
-    """Lista todas las fechas bloqueadas con paginación"""
+async def listar_servicios(
+    pagina: int = 0,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Lista servicios activos con paginación y búsqueda de texto libre.
+
+    El mismo filtro se aplica al conteo y a la página devuelta: si sólo
+    filtrara la página, el total y el número de páginas quedarían mintiendo.
+    """
     try:
         skip = pagina * limite
-        total = db.query(ServicioModel).filter(ServicioModel.activo == True).count()
-        servicios = _listar_con_proveedor(db, [ServicioModel.activo == True], skip, limite)
+        filtros = [ServicioModel.activo == True]
+
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # El conteo repite el outerjoin porque la búsqueda puede tocar
+        # columnas del proveedor.
+        total = (
+            db.query(ServicioModel)
+            .outerjoin(
+                ProveedorModel,
+                ServicioModel.proveedor_id == ProveedorModel.id_proveedor,
+            )
+            .filter(*filtros)
+            .count()
+        )
+        servicios = _listar_con_proveedor(db, filtros, skip, limite)
 
         return ResponseList(
             servicios=servicios,

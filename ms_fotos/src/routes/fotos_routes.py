@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.fotos_model import FotoModel, Servicio
 from schemas.fotos_schema import DatosFoto, ActualizarFoto, RespuestaFoto, ResponseMessage, ResponseList
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -27,6 +27,30 @@ def get_db():
         db.close()
 
 fotos = APIRouter()
+
+def _con_nombre_servicio(foto, nombre=None):
+    """Adjunta el nombre del servicio a la respuesta de la foto."""
+    datos = RespuestaFoto.model_validate(foto).model_dump()
+    datos["servicio_nombre"] = nombre
+    return RespuestaFoto(**datos)
+
+
+def _listar_con_servicio(db, filtros, skip, limite):
+    """Lista fotos junto al nombre de su servicio.
+
+    LEFT OUTER JOIN para que una foto siga listandose aunque su servicio
+    no se pueda resolver; el nombre viaja vacio en ese caso.
+    """
+    filas = (
+        db.query(FotoModel, Servicio.nombre)
+        .outerjoin(Servicio, FotoModel.servicio_id == Servicio.id_servicio)
+        .filter(*filtros)
+        .offset(skip)
+        .limit(limite)
+        .all()
+    )
+    return [_con_nombre_servicio(f, nombre) for f, nombre in filas]
+
 
 @fotos.post("/fotos/crear/", response_model=ResponseMessage)
 async def crear_foto(foto: DatosFoto, db: Session = Depends(get_db)):
@@ -59,15 +83,51 @@ async def crear_foto(foto: DatosFoto, db: Session = Depends(get_db)):
             detail="Error al crear la foto"
         )
 
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado.
+
+    unaccent en ambos lados: quien escribe sin tildes espera encontrar
+    igual. Devuelve None cuando no hay termino, para que el listado sin
+    busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        FotoModel.descripcion,
+        FotoModel.url,
+        Servicio.nombre,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @fotos.get("/fotos/listar/", response_model=ResponseList)
-async def listar_fotos(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_fotos(
+    pagina: int = 0,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
         # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
         # saltaba registros. El frontend envia paginas 0-based.
         skip = max(0, pagina) * limite
-        total = db.query(FotoModel).filter(FotoModel.eliminado == False).count()
-        fotos = db.query(FotoModel).filter(FotoModel.eliminado == False).offset(skip).limit(limite).all()
+        filtros = [FotoModel.eliminado == False]
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # El conteo repite el outerjoin porque la busqueda toca el nombre
+        # del servicio, que vive en la otra tabla.
+        total = (
+            db.query(FotoModel)
+            .outerjoin(Servicio, FotoModel.servicio_id == Servicio.id_servicio)
+            .filter(*filtros)
+            .count()
+        )
+        fotos = _listar_con_servicio(db, filtros, skip, limite)
         
         return ResponseList(
             fotos=fotos,
@@ -99,7 +159,12 @@ async def listar_fotos(id_servicio: str, pagina: int = 0, limite: int = 100, db:
         # saltaba registros. El frontend envia paginas 0-based.
         skip = max(0, pagina) * limite
         total = db.query(FotoModel).filter(FotoModel.eliminado == False, FotoModel.servicio_id == id_servicio).count()
-        fotos = db.query(FotoModel).filter(FotoModel.eliminado == False, FotoModel.servicio_id == id_servicio).offset(skip).limit(limite).all()
+        fotos = _listar_con_servicio(
+            db,
+            [FotoModel.eliminado == False, FotoModel.servicio_id == id_servicio],
+            skip,
+            limite,
+        )
         
         return ResponseList(
             fotos=fotos,

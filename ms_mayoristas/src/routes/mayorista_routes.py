@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.mayorista_model import Mayorista
 from schemas.mayorista_schema import DatosMayorista, ActualizarMayorista, RespuestaMayorista, ResponseMessage, ResponseList
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -52,15 +52,53 @@ async def crear_mayorista(mayorista: DatosMayorista, db: Session = Depends(get_d
             detail="Error al crear mayorista"
         )
 
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado.
+
+    unaccent en ambos lados: quien escribe sin tildes espera encontrar
+    igual. Devuelve None cuando no hay termino, para que el listado sin
+    busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        Mayorista.nombre,
+        Mayorista.apellidos,
+        Mayorista.email,
+        Mayorista.ciudad,
+        Mayorista.pais,
+        Mayorista.numero_documento,
+        Mayorista.telefono,
+        Mayorista.descripcion,
+        Mayorista.intereses,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @mayorista.get("/mayorista/listar", response_model=ResponseList)
-async def listar_mayoristas(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_mayoristas(
+    pagina: int = 0,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Lista todos los mayoristas con paginación"""
     try:
-        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
-        # saltaba registros. El frontend envia paginas 0-based.
+        # El salto se calcula con el tamano de pagina, no con el numero de
+        # pagina: (pagina - 1) * pagina devolvia registros equivocados.
+        # El frontend envia paginas 0-based.
         skip = max(0, pagina) * limite
-        total = db.query(Mayorista).filter(Mayorista.activo == True).count()
-        mayoristas = db.query(Mayorista).filter(Mayorista.activo == True).offset(skip).limit(limite).all()
+
+        filtros = [Mayorista.activo == True]
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # Mismo filtro en el conteo y en la pagina.
+        total = db.query(Mayorista).filter(*filtros).count()
+        mayoristas = db.query(Mayorista).filter(*filtros).offset(skip).limit(limite).all()
         
         return ResponseList(
             mayoristas=mayoristas,

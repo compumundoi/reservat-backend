@@ -4,6 +4,9 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable accent-insensitive text search (used by the services listing)
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- Create schema
 CREATE SCHEMA IF NOT EXISTS usr_app;
 

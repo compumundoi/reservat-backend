@@ -23,6 +23,10 @@ class ActualizarFoto(BaseModel):
 
 class RespuestaFoto(DatosFoto):
     id: UUID
+    # Nombre del servicio al que pertenece la foto. Queda vacio si el
+    # servicio no se puede resolver, en vez de omitir la foto del listado.
+    servicio_nombre: Optional[str] = None
+
     class Config:
         from_attributes = True
 

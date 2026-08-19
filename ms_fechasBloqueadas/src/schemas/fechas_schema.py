@@ -19,6 +19,10 @@ class ActualizarFechaBloqueada(BaseModel):
 
 class RespuestaFechaBloqueada(DatosFechaBloqueada):
     id: UUID
+    # Nombre del servicio bloqueado. Queda vacio si no se puede resolver,
+    # en vez de omitir la restriccion del listado.
+    servicio_nombre: Optional[str] = None
+
     class Config:
         from_attributes = True
 
