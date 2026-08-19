@@ -34,6 +34,7 @@ class ProveedorModel(Base):
     usuario_creador = Column(String)
     tipo_documento = Column(String)
     numero_documento = Column(String)
+    rnt = Column(String)
     activo = Column(Boolean, default=True)
 
 class HotelModel(Base):

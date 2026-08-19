@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
     usuario_creador character varying,
     tipo_documento character varying,
     numero_documento character varying,
+    rnt character varying(8),
     activo boolean DEFAULT true,
     CONSTRAINT proveedores_tipo_check CHECK ((tipo = ANY (ARRAY['restaurante'::text, 'hotel'::text, 'tour'::text, 'transporte'::text])))
 );
