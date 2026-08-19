@@ -28,6 +28,37 @@ def get_db():
 
 servicios = APIRouter()
 
+def _con_datos_proveedor(servicio, nombre=None, email=None):
+    """Adjunta el nombre y el email del proveedor a la respuesta del servicio."""
+    datos = RespuestaServicio.model_validate(servicio).model_dump()
+    datos["proveedor_nombre"] = nombre
+    datos["proveedor_email"] = email
+    return RespuestaServicio(**datos)
+
+
+def _listar_con_proveedor(db, filtros, skip, limite):
+    """Lista servicios junto a su proveedor.
+
+    El JOIN no filtra por ProveedorModel.activo, asi que un proveedor dado
+    de baja logicamente sigue resolviendo su nombre en el listado. Es un
+    LEFT OUTER JOIN por defensa: hoy una FK garantiza que el proveedor
+    exista, pero un INNER JOIN convertiria cualquier futura inconsistencia
+    en filas que desaparecen del listado sin aviso.
+    """
+    filas = (
+        db.query(ServicioModel, ProveedorModel.nombre, ProveedorModel.email)
+        .outerjoin(
+            ProveedorModel,
+            ServicioModel.proveedor_id == ProveedorModel.id_proveedor,
+        )
+        .filter(*filtros)
+        .offset(skip)
+        .limit(limite)
+        .all()
+    )
+    return [_con_datos_proveedor(s, nombre, email) for s, nombre, email in filas]
+
+
 @servicios.post("/servicios/crear/", response_model=ResponseMessage)
 async def crear_servicio(servicio: DatosServicio, db: Session = Depends(get_db)):
     """Crea un nuevas servicios  en la base de datos"""
@@ -59,8 +90,8 @@ async def listar_servicios(pagina: int = 0, limite: int = 100, db: Session = Dep
     try:
         skip = pagina * limite
         total = db.query(ServicioModel).filter(ServicioModel.activo == True).count()
-        servicios = db.query(ServicioModel).filter(ServicioModel.activo == True).offset(skip).limit(limite).all()
-                
+        servicios = _listar_con_proveedor(db, [ServicioModel.activo == True], skip, limite)
+
         return ResponseList(
             servicios=servicios,
             total=total,
@@ -89,8 +120,13 @@ async def listar_fotos(id_proveedor: str, pagina: int = 0, limite: int = 100, db
     try:
         skip = pagina * limite
         total = db.query(ServicioModel).filter(ServicioModel.activo == True, ServicioModel.proveedor_id == id_proveedor).count()
-        servicios = db.query(ServicioModel).filter(ServicioModel.activo == True, ServicioModel.proveedor_id == id_proveedor).offset(skip).limit(limite).all()
-        
+        servicios = _listar_con_proveedor(
+            db,
+            [ServicioModel.activo == True, ServicioModel.proveedor_id == id_proveedor],
+            skip,
+            limite,
+        )
+
         return ResponseList(
             servicios=servicios,
             total=total,
@@ -116,7 +152,15 @@ async def consultar_servicio(id_servicio: str, db: Session = Depends(get_db)):
         if db_servicio is None:
             raise HTTPException(status_code=404, detail="Servicio no encontrado")
 
-        return db_servicio
+        proveedor = db.query(ProveedorModel).filter(
+            ProveedorModel.id_proveedor == db_servicio.proveedor_id
+        ).first()
+
+        return _con_datos_proveedor(
+            db_servicio,
+            proveedor.nombre if proveedor else None,
+            proveedor.email if proveedor else None,
+        )
 
     except (ValueError, ValidationError):
         raise HTTPException(

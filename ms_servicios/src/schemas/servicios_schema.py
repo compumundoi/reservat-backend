@@ -38,6 +38,11 @@ class ActualizarServicio(BaseModel):
 
 class RespuestaServicio(DatosServicio):
     id_servicio: UUID
+    # Datos del proveedor dueño del servicio. Quedan vacíos si el proveedor
+    # ya no existe, para que el servicio siga apareciendo en el listado.
+    proveedor_nombre: Optional[str] = None
+    proveedor_email: Optional[str] = None
+
     class Config:
         from_attributes = True
 
