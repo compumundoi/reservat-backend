@@ -56,7 +56,9 @@ async def crear_mayorista(mayorista: DatosMayorista, db: Session = Depends(get_d
 async def listar_mayoristas(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """Lista todos los mayoristas con paginación"""
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(Mayorista).filter(Mayorista.activo == True).count()
         mayoristas = db.query(Mayorista).filter(Mayorista.activo == True).offset(skip).limit(limite).all()
         

@@ -63,7 +63,9 @@ async def crear_viaje(viaje: DatosViaje, db: Session = Depends(get_db)):
 async def listar_viajes(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(ViajesModel).filter(ViajesModel.activo == True).count()
         viajes = db.query(ViajesModel).filter(ViajesModel.activo == True).offset(skip).limit(limite).all()
         
@@ -93,7 +95,9 @@ async def listar_viajes(id_proveedor: str, pagina: int = 0, limite: int = 100, d
             detail="el proveedor no existe"
         )
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(ViajesModel).filter(ViajesModel.activo == True, ViajesModel.id_transportador == id_proveedor).count()
         viajes = db.query(ViajesModel).filter(ViajesModel.activo == True, ViajesModel.id_transportador == id_proveedor).offset(skip).limit(limite).all()
         

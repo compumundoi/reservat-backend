@@ -63,7 +63,9 @@ async def crear_foto(foto: DatosFoto, db: Session = Depends(get_db)):
 async def listar_fotos(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(FotoModel).filter(FotoModel.eliminado == False).count()
         fotos = db.query(FotoModel).filter(FotoModel.eliminado == False).offset(skip).limit(limite).all()
         
@@ -93,7 +95,9 @@ async def listar_fotos(id_servicio: str, pagina: int = 0, limite: int = 100, db:
             detail="el servicio no existe"
         )
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(FotoModel).filter(FotoModel.eliminado == False, FotoModel.servicio_id == id_servicio).count()
         fotos = db.query(FotoModel).filter(FotoModel.eliminado == False, FotoModel.servicio_id == id_servicio).offset(skip).limit(limite).all()
         

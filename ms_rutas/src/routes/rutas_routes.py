@@ -51,7 +51,9 @@ async def crear_ruta(ruta: DatosRuta, db: Session = Depends(get_db)):
 async def listar_rutas(pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """Lista todas las fechas bloqueadas con paginación"""
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(RutaModel).filter(RutaModel.activo == True).count()
         rutas = db.query(RutaModel).filter(RutaModel.activo == True).offset(skip).limit(limite).all()
         
@@ -92,7 +94,9 @@ async def consultar_ruta(id_ruta: str, db: Session = Depends(get_db)):
 async def crear_ruta(ruta: DatosOrigenDestino, pagina: int = 0, limite: int = 100, db: Session = Depends(get_db)):
     """consultar una ruta por origen y destino """
     try:
-        skip = (pagina - 1) * pagina
+        # (pagina - 1) * pagina no paginaba: repetia la primera pagina y
+        # saltaba registros. El frontend envia paginas 0-based.
+        skip = max(0, pagina) * limite
         total = db.query(RutaModel).filter(RutaModel.origen == ruta.origen).filter(RutaModel.destino == ruta.destino).filter(RutaModel.activo == True).count()
         rutas = db.query(RutaModel).filter(RutaModel.origen == ruta.origen).filter(RutaModel.destino == ruta.destino).filter(RutaModel.activo == True).offset(skip).limit(limite).all()
         
