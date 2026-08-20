@@ -7,7 +7,7 @@ import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
-from models.transportes_model import TransporteModel, ProveedorModel
+from models.transportes_model import TransporteModel, ProveedorModel, UsuarioModel
 from schemas.transportes_schema import DatosTransporte, CrearTransporteRequest, ResponseMessage, ResponseList, DatosProveedor, ListarTransporteResponse, ListarDatosProveedor, ListarDatosTransporte
 from typing import List, Optional
 from pydantic import ValidationError
@@ -44,7 +44,20 @@ def crear_registro(model, datos, uuid=None):
 async def crear_transporte(request: CrearTransporteRequest, db: Session = Depends(get_db)):
     """Crea un nuevo transporte y su proveedor asociado en la base de datos"""
     
-    # Verificar si el proveedor ya existe
+    # El alta se hace sobre un usuario proveedor que ya existe en el sistema.
+    usuario = db.query(UsuarioModel).filter(
+        UsuarioModel.email == request.proveedor.email,
+        UsuarioModel.tipo_usuario == "proveedor",
+        UsuarioModel.activo == True,
+    ).first()
+
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El correo no corresponde a un usuario proveedor activo"
+        )
+
+    # Un usuario proveedor puede tener un solo registro asociado.
     if db.query(ProveedorModel).filter(ProveedorModel.email == request.proveedor.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

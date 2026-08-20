@@ -62,4 +62,20 @@ class HotelModel(Base):
     parqueadero = Column(Boolean)
     piscina = Column(Boolean)
     planta_energia = Column(Boolean)
-    
+
+
+class UsuarioModel(Base):
+    """Vista minima de usr_app.usuarios.
+
+    Solo se usa para comprobar que el email pertenece a un usuario de tipo
+    proveedor antes de darle de alta un registro. El vinculo entre usuarios y
+    proveedores es por email: no hay llave foranea entre las dos tablas.
+    """
+
+    __tablename__ = "usuarios"
+    __table_args__ = {"schema": "usr_app"}
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    email = Column(String, unique=True)
+    tipo_usuario = Column(String)
+    activo = Column(Boolean)

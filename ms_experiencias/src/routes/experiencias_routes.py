@@ -7,7 +7,7 @@ import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
-from models.experiencias_model import ExperienciaModel, ProveedorModel
+from models.experiencias_model import ExperienciaModel, ProveedorModel, UsuarioModel
 from schemas.experiencias_schema import DatosExperiencia, CrearExperienciaRequest, ResponseMessage, ResponseList, DatosProveedor, ListarExperienciaResponse, ListarDatosProveedor, ListarDatosExperiencia
 from typing import List, Optional
 from pydantic import ValidationError
@@ -44,7 +44,20 @@ def crear_registro(model, datos, uuid=None):
 async def crear_experiencia(request: CrearExperienciaRequest, db: Session = Depends(get_db)):
     """Crea un nuevo restaurante y su proveedor asociado en la base de datos"""
     
-    # Verificar si el proveedor ya existe
+    # El alta se hace sobre un usuario proveedor que ya existe en el sistema.
+    usuario = db.query(UsuarioModel).filter(
+        UsuarioModel.email == request.proveedor.email,
+        UsuarioModel.tipo_usuario == "proveedor",
+        UsuarioModel.activo == True,
+    ).first()
+
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El correo no corresponde a un usuario proveedor activo"
+        )
+
+    # Un usuario proveedor puede tener un solo registro asociado.
     if db.query(ProveedorModel).filter(ProveedorModel.email == request.proveedor.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
