@@ -13,7 +13,7 @@ class DatosProveedor(BaseModel):
     ciudad: str
     pais: str
     sitio_web: str
-    rating_promedio: int 
+    rating_promedio: Optional[float] = 0 
     verificado: bool
     fecha_registro: datetime
     ubicacion: str
@@ -55,7 +55,7 @@ class ListarDatosProveedor(BaseModel):
     ciudad: str
     pais: str
     sitio_web: str
-    rating_promedio: int 
+    rating_promedio: Optional[float] = 0 
     verificado: bool
     fecha_registro: datetime
     ubicacion: str
