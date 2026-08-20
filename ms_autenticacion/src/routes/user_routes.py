@@ -4,6 +4,7 @@ from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 from config.db2 import DB
 import logging
+import os
 import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
@@ -35,9 +36,14 @@ COOKIE_HTTPONLY = True
 COOKIE_SAMESITE = "lax"
 
 # Configuración del JWT
-JWT_SECRET = "Hola-mundo-xd"#"your-secret-key-here"
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_MINUTES = 30
+#
+# El secreto llega por entorno y lo comparten los servicios que validan
+# tokens. El valor por defecto existe solo para levantar el stack local sin
+# configurar nada: en cualquier despliegue real hay que definir JWT_SECRET,
+# porque un secreto conocido permite fabricar tokens de administrador.
+JWT_SECRET = os.getenv("JWT_SECRET", "Hola-mundo-xd")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "30"))
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import select, and_, text, func
 from datetime import datetime, timedelta, date, timezone
@@ -8,6 +8,13 @@ import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
+from config.auth import (
+    obtener_usuario_actual,
+    exigir_administrador,
+    exigir_propietario_o_admin,
+    es_administrador,
+    ROL_MAYORISTA,
+)
 from models.reservas_model import (
     ReservaModel,
     ServicioModel,
@@ -240,8 +247,23 @@ def exigir_reserva_pendiente(reserva: ReservaModel, accion: str) -> None:
         )
 
 @reservas.post("/reservas/crear")
-async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
+async def crear_reserva(
+    datos: DatosReserva,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Crea una nueva reserva validando proveedor y mayorista"""
+    # Un mayorista solo reserva a su propio nombre: el id sale del token y no
+    # del cuerpo, que el cliente puede escribir a voluntad. El administrador
+    # sí puede cargar una reserva para otro.
+    if usuario["tipo_usuario"] == ROL_MAYORISTA:
+        datos.id_mayorista = usuario["id"]
+    elif not es_administrador(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un mayorista puede solicitar reservas",
+        )
+
     try:
         # Validar existencia de proveedor
         prov = db.query(ProveedorModel).filter(ProveedorModel.id_proveedor == str(datos.id_proveedor)).first()
@@ -332,8 +354,12 @@ async def listar_reservas(
     limite: int = 100,
     estado: Optional[str] = None,
     db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
 ):
     """Lista todas las reservas con paginación, opcionalmente por estado"""
+    # El listado completo cruza a todos los mayoristas y proveedores.
+    exigir_administrador(usuario)
+
     if estado is not None and estado not in ESTADOS_VALIDOS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -373,8 +399,16 @@ async def listar_reservas(
 
 
 @reservas.get("/reservas/listar/proveedor/{id_proveedor}")
-async def listar_reservas_por_proveedor(id_proveedor: str, pagina: int = 1, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_reservas_por_proveedor(
+    id_proveedor: str,
+    pagina: int = 1,
+    limite: int = 100,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Lista reservas por proveedor con paginación"""
+    exigir_propietario_o_admin(usuario, id_proveedor)
+
     try:
         # Validar UUID
         _ = UUID(id_proveedor)
@@ -416,8 +450,16 @@ async def listar_reservas_por_proveedor(id_proveedor: str, pagina: int = 1, limi
 
 
 @reservas.get("/reservas/listar/mayorista/{id_mayorista}")
-async def listar_reservas_por_mayorista(id_mayorista: str, pagina: int = 1, limite: int = 100, db: Session = Depends(get_db)):
+async def listar_reservas_por_mayorista(
+    id_mayorista: str,
+    pagina: int = 1,
+    limite: int = 100,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Lista reservas por mayorista con paginación"""
+    exigir_propietario_o_admin(usuario, id_mayorista)
+
     try:
         # Validar UUID
         _ = UUID(id_mayorista)
@@ -463,8 +505,10 @@ async def aprobar_reserva(
     id_reserva: str,
     datos: AprobarReserva = AprobarReserva(),
     db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
 ):
     """Un administrador aprueba una reserva pendiente"""
+    exigir_administrador(usuario)
     reserva = obtener_reserva_o_404(id_reserva, db)
     exigir_reserva_pendiente(reserva, "aprobar")
 
@@ -472,9 +516,8 @@ async def aprobar_reserva(
         reserva.estado = ESTADO_APROBADA
         reserva.motivo_rechazo = None
         reserva.fecha_decision = datetime.now(timezone.utc)
-        reserva.id_admin_decision = (
-            str(datos.id_admin_decision) if datos.id_admin_decision else None
-        )
+        # Quien decide es quien esta autenticado, no lo que diga el cuerpo.
+        reserva.id_admin_decision = usuario["id"]
 
         db.commit()
         db.refresh(reserva)
@@ -496,9 +539,13 @@ async def aprobar_reserva(
 
 @reservas.patch("/reservas/{id_reserva}/rechazar")
 async def rechazar_reserva(
-    id_reserva: str, datos: RechazarReserva, db: Session = Depends(get_db)
+    id_reserva: str,
+    datos: RechazarReserva,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
 ):
     """Un administrador rechaza una reserva pendiente indicando el motivo"""
+    exigir_administrador(usuario)
     reserva = obtener_reserva_o_404(id_reserva, db)
     exigir_reserva_pendiente(reserva, "rechazar")
 
@@ -506,9 +553,8 @@ async def rechazar_reserva(
         reserva.estado = ESTADO_RECHAZADA
         reserva.motivo_rechazo = datos.motivo_rechazo
         reserva.fecha_decision = datetime.now(timezone.utc)
-        reserva.id_admin_decision = (
-            str(datos.id_admin_decision) if datos.id_admin_decision else None
-        )
+        # Quien decide es quien esta autenticado, no lo que diga el cuerpo.
+        reserva.id_admin_decision = usuario["id"]
 
         db.commit()
         db.refresh(reserva)
@@ -529,8 +575,15 @@ async def rechazar_reserva(
 
 
 @reservas.put("/reservas/editar/{id_reserva}")
-async def editar_reserva(id_reserva: str, datos: ActualizarReserva, db: Session = Depends(get_db)):
+async def editar_reserva(
+    id_reserva: str,
+    datos: ActualizarReserva,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Edita una reserva existente"""
+    exigir_administrador(usuario)
+
     try:
         _ = UUID(id_reserva)
     except (ValueError, ValidationError):
@@ -568,8 +621,14 @@ async def editar_reserva(id_reserva: str, datos: ActualizarReserva, db: Session 
 
 
 @reservas.delete("/reservas/eliminar/{id_reserva}")
-async def eliminar_reserva(id_reserva: str, db: Session = Depends(get_db)):
+async def eliminar_reserva(
+    id_reserva: str,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Elimina lógicamente una reserva (activo = False)"""
+    exigir_administrador(usuario)
+
     try:
         _ = UUID(id_reserva)
     except (ValueError, ValidationError):
@@ -600,7 +659,11 @@ async def eliminar_reserva(id_reserva: str, db: Session = Depends(get_db)):
 
 
 @reservas.get("/reservas/consultar/{id_reserva}")
-async def obtener_reserva(id_reserva: str, db: Session = Depends(get_db)):
+async def obtener_reserva(
+    id_reserva: str,
+    db: Session = Depends(get_db),
+    usuario: dict = Depends(obtener_usuario_actual),
+):
     """Obtiene una reserva por su ID"""
     try:
         _ = UUID(id_reserva)
@@ -613,6 +676,10 @@ async def obtener_reserva(id_reserva: str, db: Session = Depends(get_db)):
     reserva = db.query(ReservaModel).filter(ReservaModel.id_reserva == id_reserva).first()
     if reserva is None:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # La ve el administrador, el mayorista que la solicitó y el proveedor que
+    # la debe atender. Nadie más.
+    exigir_propietario_o_admin(usuario, reserva.id_mayorista, reserva.id_proveedor)
 
     return serializar_reserva(reserva, cargar_nombres([reserva], db))
 
