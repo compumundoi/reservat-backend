@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.experiencias_model import ExperienciaModel, ProveedorModel
 from schemas.experiencias_schema import DatosExperiencia, CrearExperienciaRequest, ResponseMessage, ResponseList, DatosProveedor, ListarExperienciaResponse, ListarDatosProveedor, ListarDatosExperiencia
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -77,8 +77,37 @@ async def crear_experiencia(request: CrearExperienciaRequest, db: Session = Depe
             detail="Error al crear el proveedor y experiencia"
         )
 
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado.
+
+    unaccent en ambos lados: quien escribe "medellin" sin tilde espera
+    encontrar "Medellin". Devuelve None cuando no hay termino, para que el
+    listado sin busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        ProveedorModel.nombre,
+        ProveedorModel.email,
+        ProveedorModel.ciudad,
+        ProveedorModel.pais,
+        ProveedorModel.descripcion,
+        ExperienciaModel.idioma,
+        ExperienciaModel.dificultad,
+        ExperienciaModel.punto_de_encuentro,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @experiencias.get("/experiencias/listar/", response_model=ResponseList)
-async def listar_experiencias(pagina: int = 1,limite: int = 100,db: Session = Depends(get_db)):
+async def listar_experiencias(
+    pagina: int = 1,
+    limite: int = 100,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Lista todos los restaurantes con su información de proveedor"""
     try:
         pagina = max(1, pagina)
@@ -87,6 +116,12 @@ async def listar_experiencias(pagina: int = 1,limite: int = 100,db: Session = De
         query = db.query(ExperienciaModel, ProveedorModel)\
             .join(ProveedorModel, ExperienciaModel.id_experiencia == ProveedorModel.id_proveedor)\
             .filter(ProveedorModel.activo == True)
+
+        # El mismo filtro va al conteo y a la pagina: filtrar solo la pagina
+        # dejaria mintiendo al total y al numero de paginas.
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            query = query.filter(filtro_texto)
 
         total = query.count()
         print("Total de experiencias:", total)

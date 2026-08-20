@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Response, Cookie
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
 from config.db2 import DB
 import logging
@@ -21,7 +21,7 @@ from schemas.user_schama import (
     ResponseList,
     pwd_context
 )
-from typing import List
+from typing import List, Optional
 from pydantic import EmailStr, BaseModel
 from passlib.context import CryptContext
 
@@ -195,13 +195,44 @@ async def create_user(user: UsuarioCreate, db: Session = Depends(get_db)):
         )
 
 # Endpoint de Listar
+def _filtro_busqueda(busqueda):
+    """Arma el filtro de texto libre del listado.
+
+    unaccent en ambos lados: quien escribe "medellin" sin tilde espera
+    encontrar "Medellin". Devuelve None cuando no hay termino, para que el
+    listado sin busqueda no pague el costo del OR.
+    """
+    if not busqueda or not busqueda.strip():
+        return None
+
+    patron = func.unaccent(f"%{busqueda.strip()}%")
+    campos = (
+        UserModel.nombre,
+        UserModel.apellido,
+        UserModel.email,
+        UserModel.tipo_usuario,
+    )
+    return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
 @user.get("/usuarios/listar/", response_model=ResponseList)
-async def list_users(page: int = 1, size: int = 10, db: Session = Depends(get_db)):
+async def list_users(
+    page: int = 1,
+    size: int = 10,
+    busqueda: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     try:
         skip = (page - 1) * size
-        total = db.query(UserModel).filter(UserModel.activo == True).count()
-        
-        usuarios = db.query(UserModel).filter(UserModel.activo == True).offset(skip).limit(size).all()
+        filtros = [UserModel.activo == True]
+        filtro_texto = _filtro_busqueda(busqueda)
+        if filtro_texto is not None:
+            filtros.append(filtro_texto)
+
+        # Mismo filtro en el conteo y en la pagina.
+        total = db.query(UserModel).filter(*filtros).count()
+
+        usuarios = db.query(UserModel).filter(*filtros).offset(skip).limit(size).all()
         
         return ResponseList(
             usuarios=usuarios,
