@@ -10,8 +10,14 @@ class DatosMayorista(BaseModel):
     email: str
     telefono: str
     direccion: str
-    ciudad: str
-    pais: str
+    # El cliente solo manda municipio_id; ciudad, departamento y pais los
+    # deriva el servidor desde el catalogo de ubicaciones.
+    municipio_id: int
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     recurente: bool = False
     usuario_creador: Optional[str] = None
     verificado: bool = False
@@ -34,8 +40,12 @@ class ActualizarMayorista(BaseModel):
     email: Optional[str] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
+    municipio_id: Optional[int] = None
     ciudad: Optional[str] = None
+    departamento: Optional[str] = None
     pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     recurente: Optional[bool] = None
     usuario_creador: Optional[str] = None
     verificado: Optional[bool] = None
@@ -53,6 +63,9 @@ class ActualizarMayorista(BaseModel):
 
 
 class RespuestaMayorista(DatosMayorista):
+    # En lectura municipio_id puede venir nulo: hay registros historicos cuya
+    # ciudad en texto libre no matcheo contra ningun municipio del catalogo.
+    municipio_id: Optional[int] = None
     id: UUID
     fecha_creacion: Optional[datetime] = None
     fecha_actualizacion: Optional[datetime] = None

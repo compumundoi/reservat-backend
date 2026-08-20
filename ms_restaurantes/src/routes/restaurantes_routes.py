@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.restaurantes_model import restauranteModel, ProveedorModel, UsuarioModel
 from schemas.restaurantes_schema import DatosRestaurante, CrearRestauranteRequest, ResponseMessage, ResponseList, DatosProveedor, ListarRestauranteResponse, ListarDatosProveedor, ListarDatosRestaurante
+from utils.ubicacion import campos_ubicacion
 from typing import List, Optional
 from pydantic import ValidationError
 
@@ -70,6 +71,11 @@ async def crear_restaurante(request: CrearRestauranteRequest, db: Session = Depe
         
         # Crear y guardar proveedor
         proveedor_datos = request.proveedor.model_dump()
+        # La ubicacion en texto nunca se toma del cliente: se deriva del
+        # municipio elegido para que no entren ciudades inventadas.
+        proveedor_datos.update(
+            campos_ubicacion(db, proveedor_datos.get("municipio_id"))
+        )
         nuevo_proveedor = crear_registro(ProveedorModel, proveedor_datos, nuevo_uuid)
         db.add(nuevo_proveedor)
         db.commit()
@@ -82,6 +88,9 @@ async def crear_restaurante(request: CrearRestauranteRequest, db: Session = Depe
         
         return ResponseMessage(message="Proveedor y restaurante creados exitosamente")
         
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error en registro: {str(e)}")
@@ -161,6 +170,9 @@ async def listar_restaurantes(
             size=limite
         )
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         print("Error:", e)
         raise HTTPException(status_code=500, detail="Error al listar hoteles")
@@ -188,10 +200,16 @@ async def listar_restaurantes(id_restaurante: str,db: Session = Depends(get_db))
                     proveedor=ListarDatosProveedor(**proveedor_dict),
                     restaurante=ListarDatosRestaurante(**restaurante_dict)
                 )
+        except HTTPException:
+            # Un municipio inexistente es un 400 del cliente, no un 500.
+            raise
         except Exception as e:
             print("Error:", e)
             raise HTTPException(status_code=500, detail="Error al listar restaurantes")
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         print("Error:", e)
         raise HTTPException(status_code=500, detail="Error al listar restaurantes")
@@ -213,7 +231,18 @@ async def actualizar_restaurante(id_restaurante: str, datos: CrearRestauranteReq
             setattr(db_restaurante, key, value)
 
         # Actualizar los campos del proveedor
-        for key, value in datos.proveedor.model_dump(exclude_unset=True).items():
+        cambios_proveedor = datos.proveedor.model_dump(exclude_unset=True)
+        # Si viene municipio_id se recalcula toda la ubicacion; si no, se
+        # ignoran los campos de texto para que nadie los pise a mano.
+        if cambios_proveedor.get("municipio_id") is not None:
+            cambios_proveedor.update(
+                campos_ubicacion(db, cambios_proveedor["municipio_id"])
+            )
+        else:
+            for campo in ("ciudad", "departamento", "pais", "pais_id", "departamento_id"):
+                cambios_proveedor.pop(campo, None)
+
+        for key, value in cambios_proveedor.items():
             setattr(db_proveedor, key, value)
 
         # Guardar cambios
@@ -229,6 +258,9 @@ async def actualizar_restaurante(id_restaurante: str, datos: CrearRestauranteReq
             restaurante=ListarDatosRestaurante(**db_restaurante.__dict__)
         )
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         logger.error(f"Error al actualizar restaurante: {str(e)}")
         raise HTTPException(
@@ -260,6 +292,9 @@ async def eliminar_restaurante(id_restaurante: str, db: Session = Depends(get_db
             db.commit()
             return ResponseMessage(message="Restaurante eliminado exitosamente") 
             
+        except HTTPException:
+            # Un municipio inexistente es un 400 del cliente, no un 500.
+            raise
         except Exception as e:
             db.rollback()
             logger.error(f"Error en eliminación: {str(e)}")
@@ -286,6 +321,9 @@ def check_readiness(db: Session = Depends(get_db)):
         if result and result[0] == 1:
             return {"status": "Ready"}
         return {"status": "Not Ready"}
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         logger.error(f"Error en readiness check: {str(e)}")
         return {"status": "Not Ready"}

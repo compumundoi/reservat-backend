@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.servicios_model import ServicioModel, ProveedorModel
 from schemas.servicios_schema import DatosServicio, CrearServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList, ServicioBusqueda, ResponseBusquedaServicios
+from utils.ubicacion import campos_ubicacion
 from typing import List, Optional
 from pydantic import ValidationError
 
@@ -95,8 +96,14 @@ async def crear_servicio(servicio: CrearServicio, db: Session = Depends(get_db))
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="el proveedor no existe"
         )
+    datos_servicio = servicio.model_dump()
+    # La ubicacion en texto nunca se toma del cliente: se deriva del municipio
+    # elegido para que no entren ciudades inventadas. Fuera del try para que
+    # un municipio invalido devuelva 400 y no el 500 generico.
+    datos_servicio.update(campos_ubicacion(db, datos_servicio.get("municipio_id")))
+
     try:
-        nuevo_servicio = ServicioModel(**servicio.model_dump())
+        nuevo_servicio = ServicioModel(**datos_servicio)
         db.add(nuevo_servicio)
         db.commit()
         db.refresh(nuevo_servicio)
@@ -240,6 +247,14 @@ async def actualizar_servicio(id_servicio: str, datos: ActualizarServicio, db: S
     # valor actual junto con el resto del payload.
     cambios = datos.model_dump(exclude_unset=True)
     cambios.pop("tipo_servicio", None)
+
+    # Si viene municipio_id se recalcula toda la ubicacion; si no, se ignoran
+    # los campos de texto para que nadie los pise a mano.
+    if cambios.get("municipio_id") is not None:
+        cambios.update(campos_ubicacion(db, cambios["municipio_id"]))
+    else:
+        for campo in ("ciudad", "departamento", "pais", "pais_id", "departamento_id"):
+            cambios.pop(campo, None)
 
     for key, value in cambios.items():
         setattr(db_servicio, key, value)

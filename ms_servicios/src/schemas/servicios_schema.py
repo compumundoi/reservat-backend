@@ -25,8 +25,14 @@ class DatosServicio(BaseModel):
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     fecha_actualizacion: Optional[datetime] = None
     relevancia: Optional[str] = None
+    # El cliente solo manda municipio_id; ciudad, departamento y pais los
+    # deriva el servidor desde el catalogo de ubicaciones.
+    municipio_id: Optional[int] = None
     ciudad: Optional[str] = None
     departamento: Optional[str] = None
+    pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     ubicacion: Optional[str] = None
     detalles_del_servicio: Optional[str] = None
     
@@ -72,8 +78,14 @@ class ActualizarServicio(BaseModel):
     fecha_creacion: Optional[datetime] = None
     fecha_actualizacion: Optional[datetime] = None
     relevancia: Optional[str] = None
+    # El cliente solo manda municipio_id; ciudad, departamento y pais los
+    # deriva el servidor desde el catalogo de ubicaciones.
+    municipio_id: Optional[int] = None
     ciudad: Optional[str] = None
     departamento: Optional[str] = None
+    pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     ubicacion: Optional[str] = None
     detalles_del_servicio: Optional[str] = None
 

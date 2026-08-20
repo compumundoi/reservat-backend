@@ -24,8 +24,15 @@ class ServicioModel(Base):
     fecha_creacion = Column(DateTime(timezone=True), default=datetime.utcnow)
     fecha_actualizacion = Column(DateTime(timezone=True))
     relevancia = Column(String)
+    # Ubicacion: los *_id son la fuente de verdad, el texto se deriva de ellos.
+    # En servicios la direccion vive en `ubicacion` (el formulario la rotula
+    # "Direccion / Punto de Encuentro"), no en una columna `direccion`.
     ciudad = Column(String)
     departamento = Column(String)
+    pais = Column(String)
+    pais_id = Column(Integer)
+    departamento_id = Column(Integer)
+    municipio_id = Column(Integer)
     ubicacion = Column(String)
     detalles_del_servicio = Column(String)
  
@@ -41,7 +48,11 @@ class ProveedorModel(Base):
     telefono = Column(String)
     direccion = Column(String)
     ciudad = Column(String)
+    departamento = Column(String)
     pais = Column(String)
+    pais_id = Column(Integer)
+    departamento_id = Column(Integer)
+    municipio_id = Column(Integer)
     sitio_web = Column(String)
     rating_promedio = Column(Numeric)
     verificado = Column(Boolean)

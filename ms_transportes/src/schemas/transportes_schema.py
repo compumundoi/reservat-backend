@@ -9,9 +9,15 @@ class DatosProveedor(BaseModel):
     descripcion: str
     email: str
     telefono: str
-    direccion: str
-    ciudad: str
-    pais: str
+    direccion: Optional[str] = None
+    # El cliente solo manda municipio_id; ciudad, departamento y pais los
+    # deriva el servidor desde el catalogo de ubicaciones.
+    municipio_id: Optional[int] = None
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     sitio_web: str
     rating_promedio: Optional[float] = 0 
     verificado: bool
@@ -51,9 +57,15 @@ class ListarDatosProveedor(BaseModel):
     descripcion: str
     email: str
     telefono: str
-    direccion: str
-    ciudad: str
-    pais: str
+    direccion: Optional[str] = None
+    # El cliente solo manda municipio_id; ciudad, departamento y pais los
+    # deriva el servidor desde el catalogo de ubicaciones.
+    municipio_id: Optional[int] = None
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    pais: Optional[str] = None
+    pais_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     sitio_web: str
     rating_promedio: Optional[float] = 0 
     verificado: bool

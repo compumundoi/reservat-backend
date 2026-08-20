@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.mayorista_model import Mayorista
 from schemas.mayorista_schema import DatosMayorista, ActualizarMayorista, RespuestaMayorista, ResponseMessage, ResponseList
+from utils.ubicacion import campos_ubicacion
 from typing import List, Optional
 from pydantic import ValidationError
 
@@ -37,8 +38,14 @@ async def crear_mayorista(mayorista: DatosMayorista, db: Session = Depends(get_d
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email ya registrado"
         )
+    datos = mayorista.model_dump()
+    # La ubicacion en texto nunca se toma del cliente: se deriva del municipio
+    # elegido para que no entren ciudades inventadas. Fuera del try para que un
+    # municipio invalido devuelva 400 y no el 500 generico.
+    datos.update(campos_ubicacion(db, datos.get("municipio_id")))
+
     try:
-        nuevo_mayorista = Mayorista(**mayorista.model_dump())
+        nuevo_mayorista = Mayorista(**datos)
         db.add(nuevo_mayorista)
         db.commit()
         db.refresh(nuevo_mayorista)
@@ -141,7 +148,16 @@ async def actualizar_mayorista(id_mayorista: str, datos: ActualizarMayorista, db
     if db_mayorista is None:
         raise HTTPException(status_code=404, detail="Mayorista no encontrado")
     
-    for key, value in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    # Si viene municipio_id se recalcula toda la ubicacion; si no, se ignoran
+    # los campos de texto para que nadie los pise a mano.
+    if cambios.get("municipio_id") is not None:
+        cambios.update(campos_ubicacion(db, cambios["municipio_id"]))
+    else:
+        for campo in ("ciudad", "departamento", "pais", "pais_id", "departamento_id"):
+            cambios.pop(campo, None)
+
+    for key, value in cambios.items():
         setattr(db_mayorista, key, value)
     
     db.commit()

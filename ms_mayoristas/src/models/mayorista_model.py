@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Float
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Float, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -20,8 +20,13 @@ class Mayorista(Base):
     email = Column(String, unique=True)
     telefono = Column(String)
     direccion = Column(String)
+    # Ubicacion: los *_id son la fuente de verdad, el texto se deriva de ellos.
     ciudad = Column(String)
+    departamento = Column(String)
     pais = Column(String)
+    pais_id = Column(Integer)
+    departamento_id = Column(Integer)
+    municipio_id = Column(Integer)
     recurente = Column(Boolean, default=False)
     usuario_creador = Column(String, nullable=True)
     verificado = Column(Boolean, default=False)

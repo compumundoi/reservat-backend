@@ -22,8 +22,13 @@ class ProveedorModel(Base):
     email = Column(String)
     telefono = Column(String)
     direccion = Column(String)
+    # Ubicacion: los *_id son la fuente de verdad, el texto se deriva de ellos.
     ciudad = Column(String)
+    departamento = Column(String)
     pais = Column(String)
+    pais_id = Column(Integer)
+    departamento_id = Column(Integer)
+    municipio_id = Column(Integer)
     sitio_web = Column(String)
     rating_promedio = Column(Numeric)
     verificado = Column(Boolean)

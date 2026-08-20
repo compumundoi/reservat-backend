@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.hoteles_model import HotelModel, ProveedorModel, UsuarioModel
 from schemas.hoteles_schema import DatosHotel, CrearHotelRequest, ResponseMessage, ResponseList, DatosProveedor, ListarHotelResponse, ListarDatosProveedor, ListarDatosHotel
+from utils.ubicacion import campos_ubicacion
 from typing import List, Optional
 from pydantic import ValidationError
 
@@ -70,6 +71,11 @@ async def crear_hotel(request: CrearHotelRequest, db: Session = Depends(get_db))
         
         # Crear y guardar proveedor
         proveedor_datos = request.proveedor.model_dump()
+        # La ubicacion en texto nunca se toma del cliente: se deriva del
+        # municipio elegido para que no entren ciudades inventadas.
+        proveedor_datos.update(
+            campos_ubicacion(db, proveedor_datos.get("municipio_id"))
+        )
         nuevo_proveedor = crear_registro(ProveedorModel, proveedor_datos, nuevo_uuid)
         db.add(nuevo_proveedor)
         db.commit()
@@ -82,6 +88,9 @@ async def crear_hotel(request: CrearHotelRequest, db: Session = Depends(get_db))
         
         return ResponseMessage(message="Proveedor y hotel creados exitosamente")
         
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error en registro: {str(e)}")
@@ -160,6 +169,9 @@ async def listar_hoteles(
             size=limite
         )
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         print("Error:", e)
         raise HTTPException(status_code=500, detail="Error al listar hoteles")
@@ -187,10 +199,16 @@ async def listar_hoteles(id_hotel: str,db: Session = Depends(get_db)):
                     proveedor=ListarDatosProveedor(**proveedor_dict),
                     hotel=ListarDatosHotel(**hotel_dict)
                 )
+        except HTTPException:
+            # Un municipio inexistente es un 400 del cliente, no un 500.
+            raise
         except Exception as e:
             print("Error:", e)
             raise HTTPException(status_code=500, detail="Error al listar hoteles")
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         print("Error:", e)
         raise HTTPException(status_code=500, detail="Error al listar hoteles")
@@ -212,7 +230,18 @@ async def actualizar_hotel(id_hotel: str, datos: CrearHotelRequest, db: Session 
             setattr(db_hotel, key, value)
 
         # Actualizar los campos del proveedor
-        for key, value in datos.proveedor.model_dump(exclude_unset=True).items():
+        cambios_proveedor = datos.proveedor.model_dump(exclude_unset=True)
+        # Si viene municipio_id se recalcula toda la ubicacion; si no, se
+        # ignoran los campos de texto para que nadie los pise a mano.
+        if cambios_proveedor.get("municipio_id") is not None:
+            cambios_proveedor.update(
+                campos_ubicacion(db, cambios_proveedor["municipio_id"])
+            )
+        else:
+            for campo in ("ciudad", "departamento", "pais", "pais_id", "departamento_id"):
+                cambios_proveedor.pop(campo, None)
+
+        for key, value in cambios_proveedor.items():
             setattr(db_proveedor, key, value)
 
         # Guardar cambios
@@ -228,6 +257,9 @@ async def actualizar_hotel(id_hotel: str, datos: CrearHotelRequest, db: Session 
             hotel=ListarDatosHotel(**db_hotel.__dict__)
         )
 
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         logger.error(f"Error al actualizar hotel: {str(e)}")
         raise HTTPException(
@@ -259,6 +291,9 @@ async def eliminar_hotel(id_hotel: str, db: Session = Depends(get_db)):
             db.commit()
             return ResponseMessage(message="Hotel eliminado exitosamente") 
             
+        except HTTPException:
+            # Un municipio inexistente es un 400 del cliente, no un 500.
+            raise
         except Exception as e:
             db.rollback()
             logger.error(f"Error en eliminación: {str(e)}")
@@ -285,6 +320,9 @@ def check_readiness(db: Session = Depends(get_db)):
         if result and result[0] == 1:
             return {"status": "Ready"}
         return {"status": "Not Ready"}
+    except HTTPException:
+        # Un municipio inexistente es un 400 del cliente, no un 500.
+        raise
     except Exception as e:
         logger.error(f"Error en readiness check: {str(e)}")
         return {"status": "Not Ready"}
