@@ -53,6 +53,7 @@ async def buscar_proveedores(
                 ProveedorBusqueda(
                     id_proveedor=p.id_proveedor,
                     nombre=p.nombre,
+                    email=p.email,
                 )
                 for p in proveedores_result
             ],

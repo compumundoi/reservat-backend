@@ -100,6 +100,10 @@ class ResponseList(BaseModel):
 class ServicioBusqueda(BaseModel):
     id_servicio: UUID
     nombre: Optional[str] = None
+    # Con que distinguir dos servicios de nombre parecido en el
+    # autocompletado. El UUID no le dice nada a nadie; de quien es, si.
+    proveedor_nombre: Optional[str] = None
+    proveedor_email: Optional[str] = None
 
     class Config:
         from_attributes = True

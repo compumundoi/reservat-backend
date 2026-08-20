@@ -312,19 +312,29 @@ async def buscar_servicios(
         if limite > 10:
             limite = 10
 
-        query = db.query(ServicioModel)
+        # LEFT OUTER JOIN: un servicio cuyo proveedor no se pueda resolver
+        # debe seguir siendo elegible, solo que sin esos datos.
+        query = (
+            db.query(ServicioModel, ProveedorModel.nombre, ProveedorModel.email)
+            .outerjoin(
+                ProveedorModel,
+                ServicioModel.proveedor_id == ProveedorModel.id_proveedor,
+            )
+        )
 
         if search.strip():
             query = query.filter(ServicioModel.nombre.ilike(f"%{search.strip()}%"))
 
         total = query.count()
-        servicios_list = query.offset(pagina * limite).limit(limite).all()
+        filas = query.offset(pagina * limite).limit(limite).all()
 
         resultados = [
             ServicioBusqueda(
                 id_servicio=s.id_servicio,
-                nombre=s.nombre
-            ) for s in servicios_list
+                nombre=s.nombre,
+                proveedor_nombre=prov_nombre,
+                proveedor_email=prov_email,
+            ) for s, prov_nombre, prov_email in filas
         ]
 
         return ResponseBusquedaServicios(
