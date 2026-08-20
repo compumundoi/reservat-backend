@@ -48,13 +48,53 @@ def get_db():
 reservas = APIRouter()
 
 
-def serializar_reserva(reserva: ReservaModel) -> dict:
-    """Representacion JSON de una reserva, unica para todos los endpoints."""
+def cargar_nombres(reservas, db: Session) -> dict:
+    """Nombres de proveedor, mayorista y servicio de un lote de reservas.
+
+    Se resuelven en dos consultas para todo el lote y no una por reserva:
+    un listado de 100 reservas haria 300 consultas de otro modo.
+    """
+    ids_proveedor = {str(r.id_proveedor) for r in reservas if r.id_proveedor}
+    ids_mayorista = {str(r.id_mayorista) for r in reservas if r.id_mayorista}
+
+    proveedores = {}
+    if ids_proveedor:
+        proveedores = {
+            str(p.id_proveedor): p.nombre
+            for p in db.query(ProveedorModel)
+            .filter(ProveedorModel.id_proveedor.in_(ids_proveedor))
+            .all()
+        }
+
+    mayoristas = {}
+    if ids_mayorista:
+        mayoristas = {
+            str(m.id): " ".join(filter(None, [m.nombre, m.apellidos])).strip()
+            for m in db.query(MayoristaModel)
+            .filter(MayoristaModel.id.in_(ids_mayorista))
+            .all()
+        }
+
+    return {"proveedores": proveedores, "mayoristas": mayoristas}
+
+
+def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
+    """Representacion JSON de una reserva, unica para todos los endpoints.
+
+    `nombres` viene de cargar_nombres(); sin el, los nombres salen vacios y
+    el cliente muestra el identificador como respaldo.
+    """
+    nombres = nombres or {}
+    id_proveedor = str(reserva.id_proveedor) if reserva.id_proveedor else None
+    id_mayorista = str(reserva.id_mayorista) if reserva.id_mayorista else None
+
     return {
         "id": str(reserva.id_reserva),
-        "id_proveedor": str(reserva.id_proveedor) if reserva.id_proveedor else None,
+        "id_proveedor": id_proveedor,
         "id_servicio": str(reserva.id_servicio) if reserva.id_servicio else None,
-        "id_mayorista": str(reserva.id_mayorista) if reserva.id_mayorista else None,
+        "id_mayorista": id_mayorista,
+        "nombre_proveedor": nombres.get("proveedores", {}).get(id_proveedor),
+        "nombre_mayorista": nombres.get("mayoristas", {}).get(id_mayorista),
         "nombre_servicio": reserva.nombre_servicio,
         "descripcion": reserva.descripcion,
         "tipo_servicio": reserva.tipo_servicio,
@@ -314,7 +354,8 @@ async def listar_reservas(
         reservas_db = base_query.offset(skip).limit(limite).all()
 
         # Serialización manual para evitar inconsistencias de schema
-        reservas_list = [serializar_reserva(r) for r in reservas_db]
+        nombres = cargar_nombres(reservas_db, db)
+        reservas_list = [serializar_reserva(r, nombres) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -352,7 +393,8 @@ async def listar_reservas_por_proveedor(id_proveedor: str, pagina: int = 1, limi
         total = base_query.count()
         reservas_db = base_query.offset(skip).limit(limite).all()
 
-        reservas_list = [serializar_reserva(r) for r in reservas_db]
+        nombres = cargar_nombres(reservas_db, db)
+        reservas_list = [serializar_reserva(r, nombres) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -394,7 +436,8 @@ async def listar_reservas_por_mayorista(id_mayorista: str, pagina: int = 1, limi
         total = base_query.count()
         reservas_db = base_query.offset(skip).limit(limite).all()
 
-        reservas_list = [serializar_reserva(r) for r in reservas_db]
+        nombres = cargar_nombres(reservas_db, db)
+        reservas_list = [serializar_reserva(r, nombres) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -447,7 +490,7 @@ async def aprobar_reserva(
 
     return {
         "message": "Reserva aprobada exitosamente",
-        "reserva": serializar_reserva(reserva),
+        "reserva": serializar_reserva(reserva, cargar_nombres([reserva], db)),
     }
 
 
@@ -481,7 +524,7 @@ async def rechazar_reserva(
 
     return {
         "message": "Reserva rechazada exitosamente",
-        "reserva": serializar_reserva(reserva),
+        "reserva": serializar_reserva(reserva, cargar_nombres([reserva], db)),
     }
 
 
@@ -571,7 +614,7 @@ async def obtener_reserva(id_reserva: str, db: Session = Depends(get_db)):
     if reserva is None:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
-    return serializar_reserva(reserva)
+    return serializar_reserva(reserva, cargar_nombres([reserva], db))
 
 
 # Endpoint de Health Check
