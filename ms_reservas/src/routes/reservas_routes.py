@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import select, and_, text
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 import logging
 import uuid
 from uuid import UUID
@@ -12,15 +12,21 @@ from models.reservas_model import (
     ServicioModel,
     ProveedorModel,
     MayoristaModel,
+    ESTADO_PENDIENTE,
+    ESTADO_APROBADA,
+    ESTADO_RECHAZADA,
+    ESTADOS_VALIDOS,
 )
 from schemas.reservas_schema import (
     DatosReserva,
     ActualizarReserva,
+    AprobarReserva,
+    RechazarReserva,
     RespuestaReserva,
     ResponseMessage,
     ResponseList,
 )
-from typing import List
+from typing import List, Optional
 from pydantic import ValidationError
 
 logger = logging.getLogger()
@@ -38,6 +44,79 @@ def get_db():
         db.close()
 
 reservas = APIRouter()
+
+
+def serializar_reserva(reserva: ReservaModel) -> dict:
+    """Representacion JSON de una reserva, unica para todos los endpoints."""
+    return {
+        "id": str(reserva.id_reserva),
+        "id_proveedor": str(reserva.id_proveedor) if reserva.id_proveedor else None,
+        "id_servicio": str(reserva.id_servicio) if reserva.id_servicio else None,
+        "id_mayorista": str(reserva.id_mayorista) if reserva.id_mayorista else None,
+        "nombre_servicio": reserva.nombre_servicio,
+        "descripcion": reserva.descripcion,
+        "tipo_servicio": reserva.tipo_servicio,
+        "precio": reserva.precio,
+        "ciudad": reserva.ciudad,
+        "activo": reserva.activo,
+        "estado": reserva.estado,
+        "observaciones": reserva.observaciones,
+        "fecha_creacion": reserva.fecha_creacion,
+        "fecha_inicio": reserva.fecha_inicio,
+        "fecha_fin": reserva.fecha_fin,
+        "cantidad": reserva.cantidad,
+        "motivo_rechazo": reserva.motivo_rechazo,
+        "fecha_decision": reserva.fecha_decision,
+        "id_admin_decision": (
+            str(reserva.id_admin_decision) if reserva.id_admin_decision else None
+        ),
+    }
+
+
+def notificar_cambio_de_estado(reserva: ReservaModel, evento: str) -> None:
+    """Punto unico de enganche para las notificaciones por correo.
+
+    Se invoca siempre DESPUES del commit: un fallo notificando no puede
+    deshacer una reserva ya persistida. El envio real se implementa en la
+    fase 2 ('reserva_creada', 'reserva_aprobada', 'reserva_rechazada').
+    """
+    logger.info(
+        "Evento de reserva '%s' para %s (estado=%s) - notificacion pendiente de fase 2",
+        evento,
+        reserva.id_reserva,
+        reserva.estado,
+    )
+
+
+def obtener_reserva_o_404(id_reserva: str, db: Session) -> ReservaModel:
+    """Busca una reserva validando previamente que el ID sea un UUID."""
+    try:
+        _ = UUID(id_reserva)
+    except (ValueError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El ID de la reserva no es un UUID valido",
+        )
+
+    reserva = (
+        db.query(ReservaModel).filter(ReservaModel.id_reserva == id_reserva).first()
+    )
+    if reserva is None:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    return reserva
+
+
+def exigir_reserva_pendiente(reserva: ReservaModel, accion: str) -> None:
+    """Solo una reserva pendiente admite una decision del administrador."""
+    if reserva.estado != ESTADO_PENDIENTE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"No se puede {accion} la reserva porque ya esta "
+                f"'{reserva.estado}'. Solo las reservas pendientes admiten "
+                "una decision."
+            ),
+        )
 
 @reservas.post("/reservas/crear")
 async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
@@ -78,7 +157,9 @@ async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
             precio=precio_str,
             ciudad=datos.ciudad,
             activo=activo_val,
-            estado=datos.estado,
+            # El estado no lo decide el cliente: toda reserva nace pendiente
+            # y solo un administrador la mueve con aprobar/rechazar.
+            estado=ESTADO_PENDIENTE,
             observaciones=datos.observaciones,
             fecha_creacion=fecha_crea,
             fecha_inicio=fecha_inicio_val,
@@ -90,7 +171,13 @@ async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(nueva)
 
-        return {"message": "Reserva creada exitosamente", "id_reserva": str(nueva.id_reserva)}
+        notificar_cambio_de_estado(nueva, "reserva_creada")
+
+        return {
+            "message": "Reserva creada exitosamente",
+            "id_reserva": str(nueva.id_reserva),
+            "estado": nueva.estado,
+        }
 
     except HTTPException:
         raise
@@ -100,8 +187,19 @@ async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al crear la reserva")
 
 @reservas.get("/reservas/listar/")
-async def listar_reservas(pagina: int = 1, limite: int = 100, db: Session = Depends(get_db)):
-    """Lista todas las reservas con paginación"""
+async def listar_reservas(
+    pagina: int = 1,
+    limite: int = 100,
+    estado: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Lista todas las reservas con paginación, opcionalmente por estado"""
+    if estado is not None and estado not in ESTADOS_VALIDOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Estado invalido. Valores permitidos: {', '.join(ESTADOS_VALIDOS)}",
+        )
+
     try:
         if pagina < 1:
             pagina = 1
@@ -110,31 +208,13 @@ async def listar_reservas(pagina: int = 1, limite: int = 100, db: Session = Depe
         skip = (pagina - 1) * limite
 
         base_query = db.query(ReservaModel).filter(ReservaModel.activo == True)
+        if estado is not None:
+            base_query = base_query.filter(ReservaModel.estado == estado)
         total = base_query.count()
         reservas_db = base_query.offset(skip).limit(limite).all()
 
         # Serialización manual para evitar inconsistencias de schema
-        reservas_list = [
-            {
-                "id": str(r.id_reserva),
-                "id_proveedor": str(r.id_proveedor) if getattr(r, "id_proveedor", None) else None,
-                "id_servicio": str(r.id_servicio) if getattr(r, "id_servicio", None) else None,
-                "id_mayorista": str(r.id_mayorista) if getattr(r, "id_mayorista", None) else None,
-                "nombre_servicio": r.nombre_servicio,
-                "descripcion": r.descripcion,
-                "tipo_servicio": r.tipo_servicio,
-                "precio": r.precio,
-                "ciudad": r.ciudad,
-                "activo": r.activo,
-                "estado": r.estado,
-                "observaciones": r.observaciones,
-                "fecha_creacion": r.fecha_creacion,
-                "fecha_inicio": r.fecha_inicio,
-                "fecha_fin": r.fecha_fin,
-                "cantidad": r.cantidad,
-            }
-            for r in reservas_db
-        ]
+        reservas_list = [serializar_reserva(r) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -172,27 +252,7 @@ async def listar_reservas_por_proveedor(id_proveedor: str, pagina: int = 1, limi
         total = base_query.count()
         reservas_db = base_query.offset(skip).limit(limite).all()
 
-        reservas_list = [
-            {
-                "id": str(r.id_reserva),
-                "id_proveedor": str(r.id_proveedor) if getattr(r, "id_proveedor", None) else None,
-                "id_servicio": str(r.id_servicio) if getattr(r, "id_servicio", None) else None,
-                "id_mayorista": str(r.id_mayorista) if getattr(r, "id_mayorista", None) else None,
-                "nombre_servicio": r.nombre_servicio,
-                "descripcion": r.descripcion,
-                "tipo_servicio": r.tipo_servicio,
-                "precio": r.precio,
-                "ciudad": r.ciudad,
-                "activo": r.activo,
-                "estado": r.estado,
-                "observaciones": r.observaciones,
-                "fecha_creacion": r.fecha_creacion,
-                "fecha_inicio": r.fecha_inicio,
-                "fecha_fin": r.fecha_fin,
-                "cantidad": r.cantidad,
-            }
-            for r in reservas_db
-        ]
+        reservas_list = [serializar_reserva(r) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -234,25 +294,7 @@ async def listar_reservas_por_mayorista(id_mayorista: str, pagina: int = 1, limi
         total = base_query.count()
         reservas_db = base_query.offset(skip).limit(limite).all()
 
-        reservas_list = [
-            {
-                "id": str(r.id_reserva),
-                "id_proveedor": str(r.id_proveedor) if getattr(r, "id_proveedor", None) else None,
-                "id_servicio": str(r.id_servicio) if getattr(r, "id_servicio", None) else None,
-                "id_mayorista": str(r.id_mayorista) if getattr(r, "id_mayorista", None) else None,
-                "nombre_servicio": r.nombre_servicio,
-                "descripcion": r.descripcion,
-                "tipo_servicio": r.tipo_servicio,
-                "precio": r.precio,
-                "ciudad": r.ciudad,
-                "activo": r.activo,
-                "estado": r.estado,
-                "observaciones": r.observaciones,
-                "fecha_creacion": r.fecha_creacion,
-                "cantidad": r.cantidad,
-            }
-            for r in reservas_db
-        ]
+        reservas_list = [serializar_reserva(r) for r in reservas_db]
 
         return {
             "reservas": reservas_list,
@@ -273,6 +315,76 @@ async def listar_reservas_por_mayorista(id_mayorista: str, pagina: int = 1, limi
         )
 
 
+@reservas.patch("/reservas/{id_reserva}/aprobar")
+async def aprobar_reserva(
+    id_reserva: str,
+    datos: AprobarReserva = AprobarReserva(),
+    db: Session = Depends(get_db),
+):
+    """Un administrador aprueba una reserva pendiente"""
+    reserva = obtener_reserva_o_404(id_reserva, db)
+    exigir_reserva_pendiente(reserva, "aprobar")
+
+    try:
+        reserva.estado = ESTADO_APROBADA
+        reserva.motivo_rechazo = None
+        reserva.fecha_decision = datetime.now(timezone.utc)
+        reserva.id_admin_decision = (
+            str(datos.id_admin_decision) if datos.id_admin_decision else None
+        )
+
+        db.commit()
+        db.refresh(reserva)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al aprobar reserva: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al aprobar la reserva",
+        )
+
+    notificar_cambio_de_estado(reserva, "reserva_aprobada")
+
+    return {
+        "message": "Reserva aprobada exitosamente",
+        "reserva": serializar_reserva(reserva),
+    }
+
+
+@reservas.patch("/reservas/{id_reserva}/rechazar")
+async def rechazar_reserva(
+    id_reserva: str, datos: RechazarReserva, db: Session = Depends(get_db)
+):
+    """Un administrador rechaza una reserva pendiente indicando el motivo"""
+    reserva = obtener_reserva_o_404(id_reserva, db)
+    exigir_reserva_pendiente(reserva, "rechazar")
+
+    try:
+        reserva.estado = ESTADO_RECHAZADA
+        reserva.motivo_rechazo = datos.motivo_rechazo
+        reserva.fecha_decision = datetime.now(timezone.utc)
+        reserva.id_admin_decision = (
+            str(datos.id_admin_decision) if datos.id_admin_decision else None
+        )
+
+        db.commit()
+        db.refresh(reserva)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al rechazar reserva: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al rechazar la reserva",
+        )
+
+    notificar_cambio_de_estado(reserva, "reserva_rechazada")
+
+    return {
+        "message": "Reserva rechazada exitosamente",
+        "reserva": serializar_reserva(reserva),
+    }
+
+
 @reservas.put("/reservas/editar/{id_reserva}")
 async def editar_reserva(id_reserva: str, datos: ActualizarReserva, db: Session = Depends(get_db)):
     """Edita una reserva existente"""
@@ -289,7 +401,13 @@ async def editar_reserva(id_reserva: str, datos: ActualizarReserva, db: Session 
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
     try:
-        for key, value in datos.model_dump(exclude_unset=True).items():
+        cambios = datos.model_dump(exclude_unset=True)
+        # La transicion de estado tiene sus propios endpoints (aprobar /
+        # rechazar), que son los que validan el flujo y dejan trazabilidad.
+        # Editar no puede ser una puerta trasera para saltarselo.
+        cambios.pop("estado", None)
+
+        for key, value in cambios.items():
             # Asignación directa de campos del schema al modelo
             setattr(reserva, key, value)
 
@@ -353,26 +471,8 @@ async def obtener_reserva(id_reserva: str, db: Session = Depends(get_db)):
     if reserva is None:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
-    data = {
-        "id": str(reserva.id_reserva),
-        "id_proveedor": str(reserva.id_proveedor) if getattr(reserva, "id_proveedor", None) else None,
-        "id_servicio": str(reserva.id_servicio) if getattr(reserva, "id_servicio", None) else None,
-        "id_mayorista": str(reserva.id_mayorista) if getattr(reserva, "id_mayorista", None) else None,
-        "nombre_servicio": reserva.nombre_servicio,
-        "descripcion": reserva.descripcion,
-        "tipo_servicio": reserva.tipo_servicio,
-        "precio": reserva.precio,
-        "ciudad": reserva.ciudad,
-        "activo": reserva.activo,
-        "estado": reserva.estado,
-        "observaciones": reserva.observaciones,
-        "fecha_creacion": reserva.fecha_creacion,
-        "fecha_inicio": reserva.fecha_inicio,
-        "fecha_fin": reserva.fecha_fin,
-        "cantidad": reserva.cantidad,
-    }
+    return serializar_reserva(reserva)
 
-    return data
 
 # Endpoint de Health Check
 @reservas.get("/reservas/healthchecker")

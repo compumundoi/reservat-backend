@@ -244,12 +244,24 @@ CREATE TABLE IF NOT EXISTS reservas (
     precio character varying,
     ciudad character varying,
     activo boolean DEFAULT true,
-    estado character varying,
+    -- Maquina de estados de la reserva: nace 'pendiente' y solo un
+    -- administrador la mueve a 'aprobada' o 'rechazada'.
+    estado character varying NOT NULL DEFAULT 'pendiente',
     observaciones character varying,
     fecha_creacion date,
     cantidad integer,
     fecha_inicio date,
-    fecha_fin date
+    fecha_fin date,
+    -- Trazabilidad de la decision del administrador.
+    motivo_rechazo text,
+    fecha_decision timestamp with time zone,
+    id_admin_decision uuid,
+    CONSTRAINT reservas_estado_check
+        CHECK (estado IN ('pendiente', 'aprobada', 'rechazada')),
+    -- Un rechazo sin motivo no sirve: es el texto que se le envia al
+    -- mayorista y al proveedor.
+    CONSTRAINT reservas_motivo_rechazo_check
+        CHECK (estado <> 'rechazada' OR motivo_rechazo IS NOT NULL)
 );
 
 -- ============================================

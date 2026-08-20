@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, date
 from uuid import UUID
 
@@ -13,13 +13,37 @@ class DatosReserva(BaseModel):
     precio: float
     ciudad: str
     activo: bool
-    estado: str
+    # 'estado' se acepta por compatibilidad con los clientes actuales pero se
+    # ignora: toda reserva nace 'pendiente' por decision del servidor.
+    estado: Optional[str] = None
     observaciones: str
     fecha_creacion: datetime
     fecha_inicio: Optional[date] = None
     fecha_fin: Optional[date] = None
     cantidad: int
-    
+
+
+class RechazarReserva(BaseModel):
+    """Motivo con el que un administrador rechaza una reserva."""
+
+    motivo_rechazo: str = Field(min_length=1, max_length=1000)
+    id_admin_decision: Optional[UUID] = None
+
+    @field_validator("motivo_rechazo")
+    @classmethod
+    def motivo_no_vacio(cls, valor: str) -> str:
+        motivo = valor.strip()
+        if not motivo:
+            raise ValueError("El motivo del rechazo no puede estar vacio")
+        return motivo
+
+
+class AprobarReserva(BaseModel):
+    """Datos opcionales con los que un administrador aprueba una reserva."""
+
+    id_admin_decision: Optional[UUID] = None
+
+
 class ActualizarReserva(BaseModel):
     id_proveedor: Optional[UUID] = None
     id_servicio: Optional[UUID] = None

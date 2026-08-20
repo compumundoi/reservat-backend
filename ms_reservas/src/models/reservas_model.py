@@ -10,6 +10,14 @@ Base = declarative_base()
 def generate_uuid():
     return str(uuid.uuid4())
 
+# Estados validos de una reserva. Replican el CHECK
+# 'reservas_estado_check' de usr_app.reservas.
+ESTADO_PENDIENTE = "pendiente"
+ESTADO_APROBADA = "aprobada"
+ESTADO_RECHAZADA = "rechazada"
+
+ESTADOS_VALIDOS = (ESTADO_PENDIENTE, ESTADO_APROBADA, ESTADO_RECHAZADA)
+
 class ReservaModel(Base):
     __tablename__ = "reservas"
     __table_args__ = {'schema': 'usr_app'}
@@ -26,7 +34,7 @@ class ReservaModel(Base):
     ciudad = Column(String, nullable=False)
     # 'activo' ahora es booleano en BD
     activo = Column(Boolean, default=True)
-    estado = Column(String, nullable=False)
+    estado = Column(String, nullable=False, default=ESTADO_PENDIENTE)
     observaciones = Column(String, nullable=True)
     # En la BD 'fecha_creacion' es date
     fecha_creacion = Column(Date, default=datetime.utcnow)
@@ -35,6 +43,10 @@ class ReservaModel(Base):
     # Nuevas columnas de rango de fechas
     fecha_inicio = Column(Date, nullable=True)
     fecha_fin = Column(Date, nullable=True)
+    # Decision del administrador sobre la reserva
+    motivo_rechazo = Column(String, nullable=True)
+    fecha_decision = Column(DateTime(timezone=True), nullable=True)
+    id_admin_decision = Column(UUID(as_uuid=True), nullable=True)
 
 class ServicioModel(Base):
     __tablename__ = "servicios"
