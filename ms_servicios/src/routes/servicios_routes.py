@@ -234,7 +234,14 @@ async def actualizar_servicio(id_servicio: str, datos: ActualizarServicio, db: S
             detail="el servicio no existe"
         )
     
-    for key, value in datos.model_dump(exclude_unset=True).items():
+    # El tipo se define al crear y no se modifica: cambiarlo movería el
+    # servicio de categoria y con el las estadisticas y filtros que dependen
+    # de ella. Se ignora en vez de rechazar, porque el formulario reenvia el
+    # valor actual junto con el resto del payload.
+    cambios = datos.model_dump(exclude_unset=True)
+    cambios.pop("tipo_servicio", None)
+
+    for key, value in cambios.items():
         setattr(db_servicio, key, value)
     
     db.commit()

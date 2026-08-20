@@ -8,6 +8,11 @@ from uuid import UUID
 # no se permite es crear uno nuevo fuera de esta.
 MONEDA_UNICA = "COP"
 
+# Tipos de servicio admitidos. Antes el campo era texto libre y quedaron
+# registros con valores escritos a mano; esos se siguen leyendo, pero no se
+# pueden crear nuevos fuera de esta lista.
+TIPOS_DE_SERVICIO = ("transporte", "alojamiento", "experiencias", "restaurante")
+
 
 class DatosServicio(BaseModel):
     proveedor_id: UUID
@@ -32,6 +37,18 @@ class CrearServicio(DatosServicio):
     de el, asi que tambien correria al LEER y haria fallar el listado de los
     servicios historicos guardados en otra moneda.
     """
+
+    @field_validator("tipo_servicio")
+    @classmethod
+    def validar_tipo_servicio(cls, v: Optional[str]) -> str:
+        if v is None or v.strip() == "":
+            raise ValueError("el tipo de servicio es obligatorio")
+        if v.strip().lower() not in TIPOS_DE_SERVICIO:
+            raise ValueError(
+                "tipo_servicio invalido: se permite "
+                + ", ".join(TIPOS_DE_SERVICIO)
+            )
+        return v.strip().lower()
 
     @field_validator("moneda")
     @classmethod
