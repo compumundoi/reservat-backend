@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
 from models.servicios_model import ServicioModel, ProveedorModel
-from schemas.servicios_schema import DatosServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList, ServicioBusqueda, ResponseBusquedaServicios
+from schemas.servicios_schema import DatosServicio, CrearServicio, ActualizarServicio, RespuestaServicio, ResponseMessage, ResponseList, ServicioBusqueda, ResponseBusquedaServicios
 from typing import List, Optional
 from pydantic import ValidationError
 
@@ -86,7 +86,7 @@ def _listar_con_proveedor(db, filtros, skip, limite):
 
 
 @servicios.post("/servicios/crear/", response_model=ResponseMessage)
-async def crear_servicio(servicio: DatosServicio, db: Session = Depends(get_db)):
+async def crear_servicio(servicio: CrearServicio, db: Session = Depends(get_db)):
     """Crea un nuevas servicios  en la base de datos"""
     existing_proveedor = db.query(ProveedorModel).filter(ProveedorModel.id_proveedor == servicio.proveedor_id).first()
 

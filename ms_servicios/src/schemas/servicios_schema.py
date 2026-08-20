@@ -1,7 +1,13 @@
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from uuid import UUID
+
+# Los servicios se registran unicamente en pesos colombianos. Los registros
+# historicos en otra moneda se siguen leyendo y editando sin problema; lo que
+# no se permite es crear uno nuevo fuera de esta.
+MONEDA_UNICA = "COP"
+
 
 class DatosServicio(BaseModel):
     proveedor_id: UUID
@@ -9,7 +15,7 @@ class DatosServicio(BaseModel):
     descripcion: Optional[str] = None
     tipo_servicio: Optional[str] = None
     precio: float
-    moneda: Optional[str] = "USD"
+    moneda: Optional[str] = MONEDA_UNICA
     activo: bool = True
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     fecha_actualizacion: Optional[datetime] = None
@@ -19,6 +25,24 @@ class DatosServicio(BaseModel):
     ubicacion: Optional[str] = None
     detalles_del_servicio: Optional[str] = None
     
+class CrearServicio(DatosServicio):
+    """Payload de alta. Solo aqui se exige la moneda unica.
+
+    El validador NO puede vivir en DatosServicio: RespuestaServicio hereda
+    de el, asi que tambien correria al LEER y haria fallar el listado de los
+    servicios historicos guardados en otra moneda.
+    """
+
+    @field_validator("moneda")
+    @classmethod
+    def validar_moneda(cls, v: Optional[str]) -> str:
+        if v is None or v.strip() == "":
+            return MONEDA_UNICA
+        if v.strip().upper() != MONEDA_UNICA:
+            raise ValueError(f"los servicios solo se registran en {MONEDA_UNICA}")
+        return MONEDA_UNICA
+
+
 class ActualizarServicio(BaseModel):
     id_servicio: UUID
     proveedor_id: UUID

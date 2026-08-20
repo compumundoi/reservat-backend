@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS servicios (
     descripcion text,
     tipo_servicio text,
     precio numeric(10,2) NOT NULL,
-    moneda text DEFAULT 'USD'::text,
+    moneda text DEFAULT 'COP'::text,
     activo boolean DEFAULT true,
     fecha_creacion timestamp with time zone DEFAULT now(),
     fecha_actualizacion timestamp with time zone,
