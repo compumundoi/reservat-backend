@@ -19,7 +19,8 @@ from schemas.user_schama import (
     Token,
     ResponseMessage,
     ResponseList,
-    pwd_context
+    pwd_context,
+    ResponseProveedoresDisponibles
 )
 from typing import List, Optional
 from pydantic import EmailStr, BaseModel
@@ -213,6 +214,47 @@ def _filtro_busqueda(busqueda):
         UserModel.tipo_usuario,
     )
     return or_(*[func.unaccent(campo).ilike(patron) for campo in campos])
+
+
+@user.get(
+    "/usuarios/proveedores-disponibles/",
+    response_model=ResponseProveedoresDisponibles,
+)
+async def listar_proveedores_disponibles(db: Session = Depends(get_db)):
+    """Lista los usuarios proveedor que aun no tienen un registro asociado.
+
+    Un usuario proveedor puede tener un solo hotel, restaurante, experiencia
+    o transporte. La tabla `proveedores` guarda exactamente uno por email, asi
+    que quedar fuera de ella es lo que hace disponible a un usuario.
+
+    El vinculo entre `usuarios` y `proveedores` es por email: no hay llave
+    foranea entre las dos tablas.
+    """
+    try:
+        tomados = select(ProveedorModel.email)
+
+        disponibles = (
+            db.query(UserModel)
+            .filter(
+                UserModel.tipo_usuario == "proveedor",
+                UserModel.activo == True,
+                UserModel.email.notin_(tomados),
+            )
+            .order_by(UserModel.email)
+            .all()
+        )
+
+        return ResponseProveedoresDisponibles(
+            proveedores=disponibles,
+            total=len(disponibles),
+        )
+
+    except Exception as e:
+        logger.error(f"Error listando proveedores disponibles: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al listar los proveedores disponibles",
+        )
 
 
 @user.get("/usuarios/listar/", response_model=ResponseList)

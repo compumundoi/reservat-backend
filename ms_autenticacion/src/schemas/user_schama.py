@@ -4,6 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import Column, ForeignKey
 from passlib.context import CryptContext
 import uuid
+from uuid import UUID
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -60,6 +61,23 @@ class Token(BaseModel):
 class ResponseMessage(BaseModel):
     message: str
     status: int = 200
+
+class ProveedorDisponible(BaseModel):
+    """Usuario de tipo proveedor que todavia no tiene un registro asociado."""
+
+    id: UUID
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
+class ResponseProveedoresDisponibles(BaseModel):
+    proveedores: List[ProveedorDisponible]
+    total: int
+
 
 class ResponseList(BaseModel):
     usuarios: List[Usuario]
