@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, text, func
 from datetime import datetime, timedelta, date, timezone
+import json
 import logging
 import uuid
 from uuid import UUID
@@ -12,6 +13,7 @@ from models.reservas_model import (
     ServicioModel,
     ProveedorModel,
     MayoristaModel,
+    FechaBloqueadaModel,
     ESTADO_PENDIENTE,
     ESTADO_APROBADA,
     ESTADO_RECHAZADA,
@@ -65,6 +67,7 @@ def serializar_reserva(reserva: ReservaModel) -> dict:
         "fecha_inicio": reserva.fecha_inicio,
         "fecha_fin": reserva.fecha_fin,
         "cantidad": reserva.cantidad,
+        "hora": reserva.hora.strftime("%H:%M") if reserva.hora else None,
         "motivo_rechazo": reserva.motivo_rechazo,
         "fecha_decision": reserva.fecha_decision,
         "id_admin_decision": (
@@ -86,6 +89,84 @@ def notificar_cambio_de_estado(reserva: ReservaModel, evento: str) -> None:
         reserva.id_reserva,
         reserva.estado,
     )
+
+
+# Tipos que se reservan por rango de fechas; el resto va por fecha y hora.
+TIPOS_POR_RANGO = ("alojamiento", "hoteles", "hotel")
+
+
+def capacidad_del_servicio(servicio: ServicioModel):
+    """Capacidad declarada en detalles_del_servicio, o None si no la trae.
+
+    El campo es texto libre: en algunos servicios es un JSON con 'capacidad'
+    y en otros es una descripcion suelta. Sin un numero utilizable no se
+    valida nada, para no rechazar reservas por un dato que el proveedor
+    nunca cargo.
+    """
+    detalles = getattr(servicio, "detalles_del_servicio", None)
+    if not detalles:
+        return None
+
+    try:
+        datos = json.loads(detalles)
+    except (TypeError, ValueError):
+        return None
+
+    if not isinstance(datos, dict):
+        return None
+
+    capacidad = datos.get("capacidad")
+    try:
+        capacidad = int(capacidad)
+    except (TypeError, ValueError):
+        return None
+
+    return capacidad if capacidad > 0 else None
+
+
+def exigir_capacidad_suficiente(servicio: ServicioModel, cantidad: int) -> None:
+    capacidad = capacidad_del_servicio(servicio)
+    if capacidad is not None and cantidad > capacidad:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"El servicio admite hasta {capacidad} persona(s) y se "
+                f"solicitaron {cantidad}."
+            ),
+        )
+
+
+def exigir_fechas_disponibles(
+    id_servicio: str, fecha_inicio, fecha_fin, db: Session
+) -> None:
+    """Rechaza la reserva si el proveedor bloqueo alguna fecha del rango.
+
+    Se valida aca y no solo en el cliente: el bloqueo puede cargarse entre
+    que el mayorista abre la ficha y confirma la solicitud.
+    """
+    if fecha_inicio is None:
+        return
+
+    fin = fecha_fin or fecha_inicio
+
+    bloqueos = (
+        db.query(FechaBloqueadaModel)
+        .filter(FechaBloqueadaModel.servicio_id == id_servicio)
+        .filter(FechaBloqueadaModel.bloqueo_activo == True)
+        .filter(func.date(FechaBloqueadaModel.fecha) >= fecha_inicio)
+        .filter(func.date(FechaBloqueadaModel.fecha) <= fin)
+        .all()
+    )
+
+    if bloqueos:
+        fechas = sorted({b.fecha.date().isoformat() for b in bloqueos})
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "El servicio no esta disponible en estas fechas: "
+                + ", ".join(fechas)
+            ),
+        )
 
 
 def obtener_reserva_o_404(id_reserva: str, db: Session) -> ReservaModel:
@@ -138,6 +219,24 @@ async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
         if serv is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Servicio no encontrado")
 
+        exigir_capacidad_suficiente(serv, datos.cantidad)
+        exigir_fechas_disponibles(
+            str(datos.id_servicio), datos.fecha_inicio, datos.fecha_fin, db
+        )
+
+        # La hora solo tiene sentido donde se reserva un turno; en alojamiento
+        # el rango de fechas ya define la estadia.
+        tipo = str(datos.tipo_servicio or "").lower()
+        if tipo in TIPOS_POR_RANGO:
+            hora_val = None
+        else:
+            if datos.hora is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La hora es obligatoria para este tipo de servicio",
+                )
+            hora_val = datos.hora
+
         # Normalizar tipos según esquema real de BD
         precio_str = str(datos.precio) if datos.precio is not None else None
         # activo ahora es booleano
@@ -164,6 +263,7 @@ async def crear_reserva(datos: DatosReserva, db: Session = Depends(get_db)):
             fecha_creacion=fecha_crea,
             fecha_inicio=fecha_inicio_val,
             fecha_fin=fecha_fin_val,
+            hora=hora_val,
             cantidad=datos.cantidad,
         )
 

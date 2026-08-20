@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Numeric, Integer
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Numeric, Integer, Time
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -43,6 +43,8 @@ class ReservaModel(Base):
     # Nuevas columnas de rango de fechas
     fecha_inicio = Column(Date, nullable=True)
     fecha_fin = Column(Date, nullable=True)
+    # Solo para experiencias y restaurantes: el alojamiento va por rango
+    hora = Column(Time, nullable=True)
     # Decision del administrador sobre la reserva
     motivo_rechazo = Column(String, nullable=True)
     fecha_decision = Column(DateTime(timezone=True), nullable=True)
@@ -67,6 +69,18 @@ class ServicioModel(Base):
     departamento = Column(String)
     ubicacion = Column(String)
     detalles_del_servicio = Column(String)
+
+class FechaBloqueadaModel(Base):
+    __tablename__ = "fechas_bloqueadas"
+    __table_args__ = {'schema': 'usr_app'}
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    servicio_id = Column(UUID(as_uuid=True), nullable=True)
+    fecha = Column(DateTime(timezone=True), nullable=False)
+    motivo = Column(String)
+    bloqueado_por = Column(String)
+    bloqueo_activo = Column(Boolean)
+
 
 class ProveedorModel(Base):
     __tablename__ = "proveedores"

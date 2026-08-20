@@ -1,6 +1,6 @@
 from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime, date
+from datetime import datetime, date, time
 from uuid import UUID
 
 class DatosReserva(BaseModel):
@@ -20,6 +20,9 @@ class DatosReserva(BaseModel):
     fecha_creacion: datetime
     fecha_inicio: Optional[date] = None
     fecha_fin: Optional[date] = None
+    # Hora reservada: obligatoria para experiencias y restaurantes, ignorada
+    # en alojamiento. La valida crear_reserva segun el tipo de servicio.
+    hora: Optional[time] = None
     cantidad: int
 
 
@@ -59,6 +62,7 @@ class ActualizarReserva(BaseModel):
     fecha_creacion: Optional[datetime] = None
     fecha_inicio: Optional[date] = None
     fecha_fin: Optional[date] = None
+    hora: Optional[time] = None
     cantidad: Optional[int] = None
 
 class RespuestaReserva(DatosReserva):

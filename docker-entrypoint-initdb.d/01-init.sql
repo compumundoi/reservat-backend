@@ -252,6 +252,9 @@ CREATE TABLE IF NOT EXISTS reservas (
     cantidad integer,
     fecha_inicio date,
     fecha_fin date,
+    -- Hora reservada. Solo aplica a experiencias y restaurantes; el
+    -- alojamiento se reserva por rango de fechas, no por hora.
+    hora time without time zone,
     -- Trazabilidad de la decision del administrador.
     motivo_rechazo text,
     fecha_decision timestamp with time zone,
