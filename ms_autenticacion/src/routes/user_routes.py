@@ -27,13 +27,18 @@ from typing import List, Optional
 from pydantic import EmailStr, BaseModel
 from passlib.context import CryptContext
 
-# Configuración de la cookie
-COOKIE_NAME = "auth_token"
-COOKIE_DOMAIN = "localhost"  # Cambiar según el dominio real
+# Configuración de la cookie de sesión.
+#
+# El dominio y el indicador de conexión segura cambian entre desarrollo y
+# producción: con un dominio equivocado el navegador descarta la cookie sin
+# avisar, y marcarla como segura sobre HTTP tiene el mismo efecto. Por eso
+# llegan por entorno, con valores de desarrollo por defecto.
+COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "auth_token")
+COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", "localhost")
 COOKIE_PATH = "/"
-COOKIE_SECURE = False  # Cambiar a True en producción
+COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
 COOKIE_HTTPONLY = True
-COOKIE_SAMESITE = "lax"
+COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "lax")
 
 # Configuración del JWT
 #
