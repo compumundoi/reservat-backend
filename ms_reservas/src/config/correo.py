@@ -68,6 +68,11 @@ def enviar_correo(destinatarios, asunto: str, html: str) -> bool:
         headers={
             "Authorization": f"Bearer {RESEND_API_KEY}",
             "Content-Type": "application/json",
+            # urllib se identifica como "Python-urllib/3.x" y el escudo que
+            # protege la API responde 403 ante ese agente. Se declara uno
+            # propio, que ademas identifica al servicio en sus registros.
+            "User-Agent": "Reservat/1.0 (ms_reservas)",
+            "Accept": "application/json",
         },
     )
 
