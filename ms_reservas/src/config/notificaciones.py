@@ -105,6 +105,19 @@ def _plantilla(titulo: str, saludo: str, cuerpo: str, reserva, extra: str = "") 
 </div>"""
 
 
+def _boton(url: str, texto: str) -> str:
+    """Botón de acción. Los clientes de correo no admiten estilos externos."""
+    return (
+        f'<div style="margin:20px 0">'
+        f'<a href="{url}" style="display:inline-block;background:{COLOR_PRINCIPAL};'
+        f'color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;'
+        f'font-weight:600;font-size:15px">{texto}</a>'
+        f'<p style="font-size:12px;color:#6b7280;margin:8px 0 0">'
+        f'Si el botón no funciona, copia este enlace: {url}</p>'
+        f"</div>"
+    )
+
+
 def _aviso(texto: str, color_fondo: str, color_texto: str) -> str:
     return (
         f'<div style="background:{color_fondo};border-radius:8px;padding:12px 16px;margin:16px 0">'
@@ -177,21 +190,30 @@ def enviar_correos_de_reserva(reserva, evento: str, db) -> None:
             ),
         )
 
+        # El botón sólo aparece si el cobro se pudo generar; si no, se dice
+        # la verdad en vez de mostrar un enlace roto.
+        if reserva.pago_link_url:
+            extra_pago = _boton(
+                reserva.pago_link_url,
+                f"Pagar {formatear_moneda(calcular_total(reserva))}",
+            )
+        else:
+            extra_pago = _aviso(
+                "Te enviaremos el enlace de pago en un correo aparte.",
+                "#eff6ff",
+                "#1d4ed8",
+            )
+
         enviar_correo(
             [partes["mayorista"]],
             f"Tu reserva fue aprobada: {servicio}",
             _plantilla(
                 "Tu reserva fue aprobada",
                 f"Hola {partes['nombre_mayorista']},",
-                f"Tu reserva para <b>{servicio}</b> fue aprobada.",
+                f"Tu reserva para <b>{servicio}</b> fue aprobada. "
+                "Para confirmarla, completa el pago.",
                 reserva,
-                # El enlace de pago llega en la siguiente fase; hasta
-                # entonces no se promete un botón que no existe.
-                _aviso(
-                    "Te enviaremos el enlace de pago en un correo aparte.",
-                    "#eff6ff",
-                    "#1d4ed8",
-                ),
+                extra_pago,
             ),
         )
 

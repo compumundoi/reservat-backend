@@ -10,6 +10,11 @@ from fastapi.responses import JSONResponse
 from config.db2 import DB
 from config.notificaciones import enviar_correos_de_reserva
 from config.precios import calcular_total
+from config.wompi import (
+    crear_enlace_de_pago,
+    desactivar_enlace_de_pago,
+    firma_valida,
+)
 from config.auth import (
     obtener_usuario_actual,
     exigir_administrador,
@@ -118,6 +123,10 @@ def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
         "cantidad": reserva.cantidad,
         "hora": reserva.hora.strftime("%H:%M") if reserva.hora else None,
         "total": calcular_total(reserva),
+        "estado_pago": reserva.estado_pago,
+        "pago_link_url": reserva.pago_link_url,
+        "fecha_pago": reserva.fecha_pago,
+        "pago_metodo": reserva.pago_metodo,
         "motivo_rechazo": reserva.motivo_rechazo,
         "fecha_decision": reserva.fecha_decision,
         "id_admin_decision": (
@@ -544,6 +553,21 @@ async def aprobar_reserva(
             detail="Error al aprobar la reserva",
         )
 
+    # El cobro se genera despues de aprobar: si Wompi falla, la reserva
+    # sigue aprobada y el enlace se puede reintentar, pero la decision del
+    # administrador no se pierde.
+    enlace = crear_enlace_de_pago(reserva, calcular_total(reserva))
+    if enlace:
+        try:
+            reserva.pago_link_id = enlace["id"]
+            reserva.pago_link_url = enlace["url"]
+            reserva.estado_pago = "pendiente"
+            db.commit()
+            db.refresh(reserva)
+        except Exception as e:
+            db.rollback()
+            logger.error("No se pudo guardar el enlace de pago: %s", e)
+
     notificar_cambio_de_estado(reserva, "reserva_aprobada", db, tareas)
 
     return {
@@ -698,6 +722,99 @@ async def obtener_reserva(
     exigir_propietario_o_admin(usuario, reserva.id_mayorista, reserva.id_proveedor)
 
     return serializar_reserva(reserva, cargar_nombres([reserva], db))
+
+
+# Estado de la reserva segun lo que informa la pasarela.
+ESTADO_PAGO_POR_TRANSACCION = {
+    "APPROVED": "aprobado",
+    "DECLINED": "rechazado",
+    "ERROR": "error",
+    "VOIDED": "rechazado",
+}
+
+
+@reservas.post("/reservas/webhook/wompi")
+async def webhook_wompi(aviso: dict, db: Session = Depends(get_db)):
+    """Recibe el resultado del cobro.
+
+    Es publico por necesidad: lo llama la pasarela, que no tiene sesion en
+    este sistema. Por eso lo unico que lo protege es la firma del aviso, y
+    sin firma valida no se toca nada.
+    """
+    if not firma_valida(aviso):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firma invalida",
+        )
+
+    transaccion = ((aviso.get("data") or {}).get("transaction")) or {}
+    link_id = transaccion.get("payment_link_id")
+    estado_transaccion = str(transaccion.get("status") or "").upper()
+
+    if not link_id:
+        # Un aviso sin enlace no corresponde a ninguna reserva nuestra.
+        return {"message": "Aviso sin enlace de pago asociado"}
+
+    reserva = (
+        db.query(ReservaModel).filter(ReservaModel.pago_link_id == link_id).first()
+    )
+    if reserva is None:
+        # Se responde 200 a proposito: el aviso llego bien, simplemente no
+        # es de este sistema. Un error haria que la pasarela reintente sin
+        # sentido.
+        logger.warning("Aviso de pago para un enlace desconocido: %s", link_id)
+        return {"message": "Enlace no reconocido"}
+
+    nuevo_estado = ESTADO_PAGO_POR_TRANSACCION.get(estado_transaccion)
+    if nuevo_estado is None:
+        logger.info(
+            "Estado de transaccion no accionable (%s) para la reserva %s",
+            estado_transaccion,
+            reserva.id_reserva,
+        )
+        return {"message": "Estado no accionable"}
+
+    # Un pago aprobado no se revierte por un aviso posterior: la pasarela
+    # puede reenviar avisos y el enlace admite reintentos tras un fallo.
+    if reserva.estado_pago == "aprobado" and nuevo_estado != "aprobado":
+        logger.warning(
+            "Se ignora aviso %s: la reserva %s ya estaba pagada",
+            estado_transaccion,
+            reserva.id_reserva,
+        )
+        return {"message": "La reserva ya estaba pagada"}
+
+    try:
+        reserva.estado_pago = nuevo_estado
+        reserva.pago_transaccion_id = transaccion.get("id")
+        reserva.pago_metodo = transaccion.get("payment_method_type")
+
+        if nuevo_estado == "aprobado":
+            reserva.fecha_pago = datetime.now(timezone.utc)
+
+        db.commit()
+        db.refresh(reserva)
+    except Exception as e:
+        db.rollback()
+        logger.error("No se pudo registrar el resultado del pago: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo registrar el pago",
+        )
+
+    logger.info(
+        "Pago %s para la reserva %s (transaccion %s)",
+        nuevo_estado,
+        reserva.id_reserva,
+        transaccion.get("id"),
+    )
+
+    # Tras un pago exitoso el enlace deja de servir. Ante un rechazo se
+    # conserva activo: la pasarela permite reintentar con el mismo enlace.
+    if nuevo_estado == "aprobado":
+        desactivar_enlace_de_pago(link_id)
+
+    return {"message": "Pago registrado", "estado_pago": nuevo_estado}
 
 
 # Endpoint de Health Check

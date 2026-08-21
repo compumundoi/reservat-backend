@@ -45,6 +45,13 @@ class ReservaModel(Base):
     fecha_fin = Column(Date, nullable=True)
     # Solo para experiencias y restaurantes: el alojamiento va por rango
     hora = Column(Time, nullable=True)
+    # Cobro de la reserva. Solo aplica una vez aprobada.
+    estado_pago = Column(String, nullable=False, default="no_aplica")
+    pago_link_id = Column(String, nullable=True)
+    pago_link_url = Column(String, nullable=True)
+    pago_transaccion_id = Column(String, nullable=True)
+    pago_metodo = Column(String, nullable=True)
+    fecha_pago = Column(DateTime(timezone=True), nullable=True)
     # Decision del administrador sobre la reserva
     motivo_rechazo = Column(String, nullable=True)
     fecha_decision = Column(DateTime(timezone=True), nullable=True)

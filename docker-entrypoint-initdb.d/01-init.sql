@@ -255,6 +255,16 @@ CREATE TABLE IF NOT EXISTS reservas (
     -- Hora reservada. Solo aplica a experiencias y restaurantes; el
     -- alojamiento se reserva por rango de fechas, no por hora.
     hora time without time zone,
+    -- Estado del cobro. Solo tiene sentido una vez aprobada la reserva:
+    -- hasta entonces vale 'no_aplica'.
+    estado_pago text NOT NULL DEFAULT 'no_aplica',
+    pago_link_id text,
+    pago_link_url text,
+    pago_transaccion_id text,
+    pago_metodo text,
+    fecha_pago timestamp with time zone,
+    CONSTRAINT reservas_estado_pago_check
+        CHECK (estado_pago IN ('no_aplica', 'pendiente', 'aprobado', 'rechazado', 'error')),
     -- Trazabilidad de la decision del administrador.
     motivo_rechazo text,
     fecha_decision timestamp with time zone,
