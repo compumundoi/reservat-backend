@@ -19,7 +19,16 @@ from jose import JWTError, jwt
 
 logger = logging.getLogger()
 
-JWT_SECRET = os.getenv("JWT_SECRET", "Hola-mundo-xd")
+# Sin secreto el servicio no arranca. La alternativa —caer en un valor por
+# defecto— es peor que no arrancar: con un secreto conocido cualquiera firma
+# un token de administrador y el resto de las validaciones no sirve de nada.
+JWT_SECRET = os.getenv("JWT_SECRET") or ""
+if not JWT_SECRET.strip():
+    raise RuntimeError(
+        "Falta la variable de entorno JWT_SECRET. "
+        "Ejecuta 'python3 setup_envs.py' para generarla."
+    )
+
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "auth_token")
 

@@ -37,11 +37,16 @@ COOKIE_SAMESITE = "lax"
 
 # Configuración del JWT
 #
-# El secreto llega por entorno y lo comparten los servicios que validan
-# tokens. El valor por defecto existe solo para levantar el stack local sin
-# configurar nada: en cualquier despliegue real hay que definir JWT_SECRET,
-# porque un secreto conocido permite fabricar tokens de administrador.
-JWT_SECRET = os.getenv("JWT_SECRET", "Hola-mundo-xd")
+# El secreto llega por entorno y lo comparten los servicios que firman y
+# verifican tokens. No hay valor por defecto a proposito: arrancar con un
+# secreto conocido permitiria a cualquiera fabricar un token de
+# administrador, y eso es peor que no arrancar.
+JWT_SECRET = os.getenv("JWT_SECRET") or ""
+if not JWT_SECRET.strip():
+    raise RuntimeError(
+        "Falta la variable de entorno JWT_SECRET. "
+        "Ejecuta 'python3 setup_envs.py' para generarla."
+    )
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "30"))
 
