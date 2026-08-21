@@ -27,6 +27,7 @@ from models.reservas_model import (
     ServicioModel,
     ProveedorModel,
     MayoristaModel,
+    UsuarioModel,
     FechaBloqueadaModel,
     ESTADO_PENDIENTE,
     ESTADO_APROBADA,
@@ -63,18 +64,23 @@ reservas = APIRouter()
 
 
 def cargar_nombres(reservas, db: Session) -> dict:
-    """Nombres de proveedor, mayorista y servicio de un lote de reservas.
+    """Nombre y correo del proveedor, el mayorista y quien decidio la reserva.
 
-    Se resuelven en dos consultas para todo el lote y no una por reserva:
-    un listado de 100 reservas haria 300 consultas de otro modo.
+    Se resuelven en tres consultas para todo el lote y no una por reserva:
+    un listado de 100 reservas haria cientos de consultas de otro modo. Cada
+    entrada es {"nombre": ..., "email": ...}; quien no aparezca en su tabla
+    simplemente no esta en el diccionario.
     """
     ids_proveedor = {str(r.id_proveedor) for r in reservas if r.id_proveedor}
     ids_mayorista = {str(r.id_mayorista) for r in reservas if r.id_mayorista}
+    ids_admin = {
+        str(r.id_admin_decision) for r in reservas if r.id_admin_decision
+    }
 
     proveedores = {}
     if ids_proveedor:
         proveedores = {
-            str(p.id_proveedor): p.nombre
+            str(p.id_proveedor): {"nombre": p.nombre, "email": p.email}
             for p in db.query(ProveedorModel)
             .filter(ProveedorModel.id_proveedor.in_(ids_proveedor))
             .all()
@@ -83,13 +89,34 @@ def cargar_nombres(reservas, db: Session) -> dict:
     mayoristas = {}
     if ids_mayorista:
         mayoristas = {
-            str(m.id): " ".join(filter(None, [m.nombre, m.apellidos])).strip()
+            str(m.id): {
+                "nombre": " ".join(filter(None, [m.nombre, m.apellidos])).strip(),
+                "email": m.email,
+            }
             for m in db.query(MayoristaModel)
             .filter(MayoristaModel.id.in_(ids_mayorista))
             .all()
         }
 
-    return {"proveedores": proveedores, "mayoristas": mayoristas}
+    # Quien aprobo o rechazo: el admin se guarda por id, y el dashboard tiene
+    # que mostrar una persona, no un UUID.
+    admins = {}
+    if ids_admin:
+        admins = {
+            str(u.id): {
+                "nombre": " ".join(filter(None, [u.nombre, u.apellido])).strip(),
+                "email": u.email,
+            }
+            for u in db.query(UsuarioModel)
+            .filter(UsuarioModel.id.in_(ids_admin))
+            .all()
+        }
+
+    return {
+        "proveedores": proveedores,
+        "mayoristas": mayoristas,
+        "admins": admins,
+    }
 
 
 def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
@@ -101,14 +128,23 @@ def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
     nombres = nombres or {}
     id_proveedor = str(reserva.id_proveedor) if reserva.id_proveedor else None
     id_mayorista = str(reserva.id_mayorista) if reserva.id_mayorista else None
+    id_admin = (
+        str(reserva.id_admin_decision) if reserva.id_admin_decision else None
+    )
+
+    proveedor = nombres.get("proveedores", {}).get(id_proveedor) or {}
+    mayorista = nombres.get("mayoristas", {}).get(id_mayorista) or {}
+    admin = nombres.get("admins", {}).get(id_admin) or {}
 
     return {
         "id": str(reserva.id_reserva),
         "id_proveedor": id_proveedor,
         "id_servicio": str(reserva.id_servicio) if reserva.id_servicio else None,
         "id_mayorista": id_mayorista,
-        "nombre_proveedor": nombres.get("proveedores", {}).get(id_proveedor),
-        "nombre_mayorista": nombres.get("mayoristas", {}).get(id_mayorista),
+        "nombre_proveedor": proveedor.get("nombre"),
+        "email_proveedor": proveedor.get("email"),
+        "nombre_mayorista": mayorista.get("nombre"),
+        "email_mayorista": mayorista.get("email"),
         "nombre_servicio": reserva.nombre_servicio,
         "descripcion": reserva.descripcion,
         "tipo_servicio": reserva.tipo_servicio,
@@ -129,9 +165,9 @@ def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
         "pago_metodo": reserva.pago_metodo,
         "motivo_rechazo": reserva.motivo_rechazo,
         "fecha_decision": reserva.fecha_decision,
-        "id_admin_decision": (
-            str(reserva.id_admin_decision) if reserva.id_admin_decision else None
-        ),
+        "id_admin_decision": id_admin,
+        "nombre_admin_decision": admin.get("nombre"),
+        "email_admin_decision": admin.get("email"),
     }
 
 

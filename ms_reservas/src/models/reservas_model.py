@@ -83,12 +83,14 @@ ROLES_ADMINISTRADOR = ("admin", "administrador")
 
 
 class UsuarioModel(Base):
-    """Solo lo necesario para saber a que administradores avisar."""
+    """A que administradores avisar, y quien decidio una reserva."""
 
     __tablename__ = "usuarios"
     __table_args__ = {'schema': 'usr_app'}
 
     id = Column(UUID(as_uuid=True), primary_key=True)
+    nombre = Column(String)
+    apellido = Column(String)
     email = Column(String, nullable=False)
     tipo_usuario = Column(String)
     activo = Column(Boolean, default=True)
