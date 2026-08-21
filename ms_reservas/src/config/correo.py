@@ -30,6 +30,36 @@ CORREO_REMITENTE = os.getenv("CORREO_REMITENTE", "Reservat <onboarding@resend.de
 
 TIEMPO_LIMITE_SEGUNDOS = 10
 
+# Lista blanca de desarrollo. Con CORREOS_PERMITIDOS definida, sólo se
+# escribe a esas direcciones y el resto se descarta con un registro en el
+# log. Evita que una prueba le escriba a un proveedor real sin tener que
+# falsear los correos en la base, que es de donde depende el inicio de
+# sesión. En produccion se deja vacia y no filtra nada.
+CORREOS_PERMITIDOS = {
+    c.strip().lower()
+    for c in os.getenv("CORREOS_PERMITIDOS", "").split(",")
+    if c.strip()
+}
+
+
+def _filtrar_permitidos(destinos, asunto):
+    """Descarta los destinatarios que la lista blanca no autoriza."""
+    if not CORREOS_PERMITIDOS:
+        return destinos
+
+    permitidos = [d for d in destinos if d.lower() in CORREOS_PERMITIDOS]
+    descartados = [d for d in destinos if d.lower() not in CORREOS_PERMITIDOS]
+
+    if descartados:
+        logger.warning(
+            "Modo desarrollo: correo %r NO enviado a %s (fuera de "
+            "CORREOS_PERMITIDOS)",
+            asunto,
+            descartados,
+        )
+
+    return permitidos
+
 
 def correo_habilitado() -> bool:
     return bool(RESEND_API_KEY)
@@ -41,6 +71,10 @@ def enviar_correo(destinatarios, asunto: str, html: str) -> bool:
 
     if not destinos:
         logger.info("Correo '%s' omitido: no hay destinatarios", asunto)
+        return False
+
+    destinos = _filtrar_permitidos(destinos, asunto)
+    if not destinos:
         return False
 
     if not correo_habilitado():
