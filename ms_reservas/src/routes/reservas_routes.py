@@ -734,7 +734,11 @@ ESTADO_PAGO_POR_TRANSACCION = {
 
 
 @reservas.post("/reservas/webhook/wompi")
-async def webhook_wompi(aviso: dict, db: Session = Depends(get_db)):
+async def webhook_wompi(
+    aviso: dict,
+    tareas: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Recibe el resultado del cobro.
 
     Es publico por necesidad: lo llama la pasarela, que no tiene sesion en
@@ -813,6 +817,15 @@ async def webhook_wompi(aviso: dict, db: Session = Depends(get_db)):
     # conserva activo: la pasarela permite reintentar con el mismo enlace.
     if nuevo_estado == "aprobado":
         desactivar_enlace_de_pago(link_id)
+
+    # El resultado del cobro también se avisa: sin esto el dato queda en la
+    # base y las tres partes se quedan esperando.
+    notificar_cambio_de_estado(
+        reserva,
+        "pago_aprobado" if nuevo_estado == "aprobado" else "pago_fallido",
+        db,
+        tareas,
+    )
 
     return {"message": "Pago registrado", "estado_pago": nuevo_estado}
 

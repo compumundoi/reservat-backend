@@ -118,6 +118,36 @@ def _boton(url: str, texto: str) -> str:
     )
 
 
+def _comprobante(reserva) -> str:
+    """Datos con los que reclamar el pago ante cualquier duda."""
+    filas = []
+    if reserva.pago_transaccion_id:
+        filas.append(("Transacción", reserva.pago_transaccion_id))
+    if reserva.pago_metodo:
+        filas.append(("Medio de pago", reserva.pago_metodo))
+    if reserva.fecha_pago:
+        filas.append(("Fecha", reserva.fecha_pago.strftime("%d/%m/%Y %H:%M")))
+
+    if not filas:
+        return ""
+
+    celdas = "".join(
+        f'<tr>'
+        f'<td style="padding:4px 12px 4px 0;color:#6b7280;font-size:13px">{etiqueta}</td>'
+        f'<td style="padding:4px 0;color:#111827;font-size:13px">{valor}</td>'
+        f'</tr>'
+        for etiqueta, valor in filas
+    )
+
+    return (
+        '<div style="background:#f0fdf4;border-radius:8px;padding:12px 16px;margin:16px 0">'
+        '<p style="margin:0 0 8px;font-size:14px;color:#15803d;font-weight:600">'
+        "Comprobante</p>"
+        f'<table style="border-collapse:collapse">{celdas}</table>'
+        "</div>"
+    )
+
+
 def _aviso(texto: str, color_fondo: str, color_texto: str) -> str:
     return (
         f'<div style="background:{color_fondo};border-radius:8px;padding:12px 16px;margin:16px 0">'
@@ -245,6 +275,70 @@ def enviar_correos_de_reserva(reserva, evento: str, db) -> None:
                 f"<b>{servicio}</b> fue rechazada por un administrador.",
                 reserva,
                 aviso_motivo,
+            ),
+        )
+
+    elif evento == "pago_aprobado":
+        # El pago es la señal para el proveedor: hasta acá la reserva estaba
+        # aprobada pero sin cobrar, y ahora sí hay que prepararla.
+        enviar_correo(
+            [partes["proveedor"]],
+            f"Pago confirmado: {servicio}",
+            _plantilla(
+                "La reserva ya está pagada",
+                f"Hola {partes['nombre_proveedor']},",
+                f"<b>{partes['nombre_mayorista']}</b> completó el pago de "
+                f"<b>{servicio}</b>. La reserva queda confirmada.",
+                reserva,
+                _aviso(
+                    "Puedes preparar el servicio para las fechas indicadas.",
+                    "#f0fdf4",
+                    "#15803d",
+                ),
+            ),
+        )
+
+        enviar_correo(
+            [partes["mayorista"]],
+            f"Recibimos tu pago: {servicio}",
+            _plantilla(
+                "Tu pago fue confirmado",
+                f"Hola {partes['nombre_mayorista']},",
+                f"Recibimos el pago de <b>{servicio}</b>. Tu reserva está "
+                "confirmada.",
+                reserva,
+                _comprobante(reserva),
+            ),
+        )
+
+        enviar_correo(
+            partes["administradores"],
+            f"Pago recibido: {servicio}",
+            _plantilla(
+                "Pago recibido",
+                "Hola,",
+                f"<b>{partes['nombre_mayorista']}</b> pagó la reserva de "
+                f"<b>{servicio}</b> con {partes['nombre_proveedor']}.",
+                reserva,
+                _comprobante(reserva),
+            ),
+        )
+
+    elif evento == "pago_fallido":
+        # Sólo al mayorista: es quien puede reintentar. Avisarle al proveedor
+        # de cada intento fallido sería ruido sin acción posible.
+        enviar_correo(
+            [partes["mayorista"]],
+            f"No pudimos procesar tu pago: {servicio}",
+            _plantilla(
+                "El pago no se completó",
+                f"Hola {partes['nombre_mayorista']},",
+                f"El intento de pago de <b>{servicio}</b> no se completó. "
+                "Tu reserva sigue aprobada y puedes intentarlo nuevamente.",
+                reserva,
+                _boton(reserva.pago_link_url, "Reintentar el pago")
+                if reserva.pago_link_url
+                else "",
             ),
         )
 
