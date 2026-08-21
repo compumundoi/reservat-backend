@@ -70,6 +70,23 @@ class ServicioModel(Base):
     ubicacion = Column(String)
     detalles_del_servicio = Column(String)
 
+# Roles con permiso de administracion. La base guarda "admin" y los tipos
+# del dashboard declaran "administrador": se contemplan ambos.
+ROLES_ADMINISTRADOR = ("admin", "administrador")
+
+
+class UsuarioModel(Base):
+    """Solo lo necesario para saber a que administradores avisar."""
+
+    __tablename__ = "usuarios"
+    __table_args__ = {'schema': 'usr_app'}
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    email = Column(String, nullable=False)
+    tipo_usuario = Column(String)
+    activo = Column(Boolean, default=True)
+
+
 class FechaBloqueadaModel(Base):
     __tablename__ = "fechas_bloqueadas"
     __table_args__ = {'schema': 'usr_app'}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Request, BackgroundTasks
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import select, and_, text, func
 from datetime import datetime, timedelta, date, timezone
@@ -8,6 +8,8 @@ import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
+from config.notificaciones import enviar_correos_de_reserva
+from config.precios import calcular_total
 from config.auth import (
     obtener_usuario_actual,
     exigir_administrador,
@@ -115,6 +117,7 @@ def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
         "fecha_fin": reserva.fecha_fin,
         "cantidad": reserva.cantidad,
         "hora": reserva.hora.strftime("%H:%M") if reserva.hora else None,
+        "total": calcular_total(reserva),
         "motivo_rechazo": reserva.motivo_rechazo,
         "fecha_decision": reserva.fecha_decision,
         "id_admin_decision": (
@@ -123,19 +126,29 @@ def serializar_reserva(reserva: ReservaModel, nombres: dict = None) -> dict:
     }
 
 
-def notificar_cambio_de_estado(reserva: ReservaModel, evento: str) -> None:
+def notificar_cambio_de_estado(
+    reserva: ReservaModel,
+    evento: str,
+    db: Session,
+    tareas: BackgroundTasks = None,
+) -> None:
     """Punto unico de enganche para las notificaciones por correo.
 
     Se invoca siempre DESPUES del commit: un fallo notificando no puede
-    deshacer una reserva ya persistida. El envio real se implementa en la
-    fase 2 ('reserva_creada', 'reserva_aprobada', 'reserva_rechazada').
+    deshacer una reserva ya persistida. Y se despacha en segundo plano para
+    que quien reserva no espere a que salgan tres correos.
     """
     logger.info(
-        "Evento de reserva '%s' para %s (estado=%s) - notificacion pendiente de fase 2",
+        "Evento de reserva '%s' para %s (estado=%s)",
         evento,
         reserva.id_reserva,
         reserva.estado,
     )
+
+    if tareas is not None:
+        tareas.add_task(enviar_correos_de_reserva, reserva, evento, db)
+    else:
+        enviar_correos_de_reserva(reserva, evento, db)
 
 
 # Tipos que se reservan por rango de fechas; el resto va por fecha y hora.
@@ -249,6 +262,7 @@ def exigir_reserva_pendiente(reserva: ReservaModel, accion: str) -> None:
 @reservas.post("/reservas/crear")
 async def crear_reserva(
     datos: DatosReserva,
+    tareas: BackgroundTasks,
     db: Session = Depends(get_db),
     usuario: dict = Depends(obtener_usuario_actual),
 ):
@@ -333,7 +347,7 @@ async def crear_reserva(
         db.commit()
         db.refresh(nueva)
 
-        notificar_cambio_de_estado(nueva, "reserva_creada")
+        notificar_cambio_de_estado(nueva, "reserva_creada", db, tareas)
 
         return {
             "message": "Reserva creada exitosamente",
@@ -503,6 +517,7 @@ async def listar_reservas_por_mayorista(
 @reservas.patch("/reservas/{id_reserva}/aprobar")
 async def aprobar_reserva(
     id_reserva: str,
+    tareas: BackgroundTasks,
     datos: AprobarReserva = AprobarReserva(),
     db: Session = Depends(get_db),
     usuario: dict = Depends(obtener_usuario_actual),
@@ -529,7 +544,7 @@ async def aprobar_reserva(
             detail="Error al aprobar la reserva",
         )
 
-    notificar_cambio_de_estado(reserva, "reserva_aprobada")
+    notificar_cambio_de_estado(reserva, "reserva_aprobada", db, tareas)
 
     return {
         "message": "Reserva aprobada exitosamente",
@@ -541,6 +556,7 @@ async def aprobar_reserva(
 async def rechazar_reserva(
     id_reserva: str,
     datos: RechazarReserva,
+    tareas: BackgroundTasks,
     db: Session = Depends(get_db),
     usuario: dict = Depends(obtener_usuario_actual),
 ):
@@ -566,7 +582,7 @@ async def rechazar_reserva(
             detail="Error al rechazar la reserva",
         )
 
-    notificar_cambio_de_estado(reserva, "reserva_rechazada")
+    notificar_cambio_de_estado(reserva, "reserva_rechazada", db, tareas)
 
     return {
         "message": "Reserva rechazada exitosamente",
