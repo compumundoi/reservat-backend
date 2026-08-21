@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Response, Cookie
+from fastapi import APIRouter, HTTPException, Depends, status, Response, Cookie, Request
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
@@ -378,6 +378,55 @@ async def change_password(request: ChangePasswordRequest, db: Session = Depends(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al cambiar contraseña"
         )
+
+@user.get("/usuarios/verificar")
+def verificar_sesion(request: Request):
+    """Valida la sesión y describe al usuario. Lo usa el gateway.
+
+    Traefik consulta este endpoint antes de dejar pasar una petición hacia
+    cualquier microservicio protegido (middleware ForwardAuth): si responde
+    200 la deja seguir, y con cualquier otro código la corta. Los datos del
+    usuario se devuelven en cabeceras para que el servicio de destino no
+    tenga que volver a decodificar el token.
+    """
+    autorizacion = request.headers.get("Authorization") or ""
+    if autorizacion.lower().startswith("bearer "):
+        token = autorizacion[7:].strip()
+    else:
+        token = request.cookies.get(COOKIE_NAME)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Necesitas iniciar sesion",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        datos = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError as e:
+        logger.warning("Token rechazado en verificar: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tu sesion no es valida o expiro",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not datos.get("id"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token no identifica a ningun usuario",
+        )
+
+    return JSONResponse(
+        content={"id": str(datos["id"]), "tipo_usuario": datos.get("tipo_usuario")},
+        headers={
+            "X-Usuario-Id": str(datos["id"]),
+            "X-Usuario-Tipo": str(datos.get("tipo_usuario") or ""),
+            "X-Usuario-Email": str(datos.get("email") or ""),
+        },
+    )
+
 
 # Endpoint de Health Check
 @user.get("/usuarios/healthchecker")
