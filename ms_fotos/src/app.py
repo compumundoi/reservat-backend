@@ -6,7 +6,12 @@ from starlette.background import BackgroundTask
 from starlette.types import Message
 from fastapi_pagination import add_pagination
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from routes.fotos_routes import fotos
+from config.s3 import TAMANO_MAXIMO_BYTES
+
+# Margen sobre la imagen para los campos de texto y separadores del formulario.
+LIMITE_MULTIPART_BYTES = TAMANO_MAXIMO_BYTES + 64 * 1024
 
 
 # Configurar logging
@@ -72,8 +77,19 @@ async def some_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
         
-    req_body = await request.body()
-    await set_body(request, req_body)
+    if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        # Las subidas no se cargan enteras en memoria ni se escriben al log.
+        # Se rechazan antes de leerlas si declaran mas de lo permitido.
+        largo = request.headers.get("content-length", "")
+        if not largo.isdigit() or int(largo) > LIMITE_MULTIPART_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"La imagen supera el maximo de {TAMANO_MAXIMO_BYTES // (1024 * 1024)} MB"},
+            )
+        req_body = b"<multipart omitido del log>"
+    else:
+        req_body = await request.body()
+        await set_body(request, req_body)
     response = await call_next(request)
 
     res_body = b''

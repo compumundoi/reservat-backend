@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Form
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import select, and_, or_, func, text
 from datetime import datetime, timedelta
@@ -7,6 +7,7 @@ import uuid
 from uuid import UUID
 from fastapi.responses import JSONResponse
 from config.db2 import DB
+from config.s3 import almacenamiento, detectar_tipo_imagen, AlmacenamientoNoConfigurado, TAMANO_MAXIMO_BYTES
 from models.fotos_model import FotoModel, Servicio
 from schemas.fotos_schema import DatosFoto, ActualizarFoto, RespuestaFoto, ResponseMessage, ResponseList
 from typing import List, Optional
@@ -82,6 +83,90 @@ async def crear_foto(foto: DatosFoto, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al crear la foto"
         )
+
+@fotos.post("/fotos/subir/", response_model=RespuestaFoto, status_code=status.HTTP_201_CREATED)
+async def subir_foto(
+    archivo: UploadFile = File(...),
+    servicio_id: UUID = Form(...),
+    descripcion: str = Form(""),
+    orden: int = Form(0),
+    es_portada: bool = Form(False),
+    eliminado: bool = Form(False),
+    fecha_subida: Optional[datetime] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Sube la imagen al bucket S3 y registra la foto con la URL resultante."""
+    if not almacenamiento.configurado:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El almacenamiento de imagenes no esta configurado"
+        )
+
+    existing_servicio = db.query(Servicio).filter(Servicio.id_servicio == servicio_id).first()
+    if existing_servicio is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="el servicio no existe"
+        )
+
+    # Se lee un byte de mas para detectar el exceso sin cargar archivos enormes.
+    contenido = await archivo.read(TAMANO_MAXIMO_BYTES + 1)
+    if len(contenido) > TAMANO_MAXIMO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"La imagen supera el maximo de {TAMANO_MAXIMO_BYTES // (1024 * 1024)} MB"
+        )
+    if not contenido:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo esta vacio"
+        )
+
+    content_type = detectar_tipo_imagen(contenido)
+    if content_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Formato no soportado. Usa JPG, PNG, WEBP o GIF"
+        )
+
+    try:
+        clave, url = almacenamiento.subir(contenido, content_type, servicio_id)
+    except AlmacenamientoNoConfigurado:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El almacenamiento de imagenes no esta configurado"
+        )
+    except Exception as e:
+        logger.error(f"Error subiendo imagen a S3: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo subir la imagen al almacenamiento"
+        )
+
+    try:
+        nueva_foto = FotoModel(
+            servicio_id=servicio_id,
+            url=url,
+            descripcion=descripcion,
+            orden=orden,
+            es_portada=es_portada,
+            eliminado=eliminado,
+            fecha_subida=fecha_subida or datetime.utcnow(),
+        )
+        db.add(nueva_foto)
+        db.commit()
+        db.refresh(nueva_foto)
+        return _con_nombre_servicio(nueva_foto, existing_servicio.nombre)
+    except Exception as e:
+        db.rollback()
+        # Sin registro en BD el objeto quedaria huerfano en el bucket.
+        almacenamiento.borrar(clave)
+        logger.error(f"Error registrando foto subida: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al crear la foto"
+        )
+
 
 def _filtro_busqueda(busqueda):
     """Arma el filtro de texto libre del listado.
@@ -216,9 +301,12 @@ async def actualizar_foto(id_foto: str, datos: ActualizarFoto, db: Session = Dep
     
     for key, value in datos.model_dump(exclude_unset=True).items():
         setattr(db_foto, key, value)
-    
+
     db.commit()
     db.refresh(db_foto)
+    # "Marcar como eliminada" desde el formulario de edicion tambien es un borrado.
+    if db_foto.eliminado:
+        almacenamiento.borrar_por_url(db_foto.url)
     return db_foto
 
 @fotos.delete("/fotos/eliminar/{id_foto}", response_model=ResponseMessage)
@@ -240,7 +328,10 @@ async def eliminar_foto(id_foto: str, db: Session = Depends(get_db)):
         try:
             db_fecha.eliminado = True
             db.commit()
-            return ResponseMessage(message="Foto eliminada exitosamente") 
+            # Primero la BD: si falla S3 queda un objeto huerfano (se registra en
+            # el log), nunca una foto activa apuntando a un archivo inexistente.
+            almacenamiento.borrar_por_url(db_fecha.url)
+            return ResponseMessage(message="Foto eliminada exitosamente")
             
         except Exception as e:
             db.rollback()
