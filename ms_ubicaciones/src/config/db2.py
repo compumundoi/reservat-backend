@@ -44,10 +44,18 @@ class DB:
             
             logger.info(f"Conectando a la base de datos en {db_host}:{db_port}/{db_name} como {db_user}")
             
+            # Todos los servicios comparten un Postgres de max_connections=100.
+            # Con pool_size=200 el pool retenia cada conexion abierta en un
+            # pico y terminaba agotando la base para todos. Ahora quedan 2
+            # abiertas por worker y las de un pico se cierran al devolverse.
+            # max_overflow es alto a proposito: los endpoints son async con
+            # consultas sincronas, y esperar una conexion bloquea el event
+            # loop del worker entero, que es quien debe liberarlas.
             engine = create_engine(
                 connection_url,
-                pool_size=200,
-                max_overflow=0,
+                pool_size=2,
+                max_overflow=60,
+                pool_timeout=10,
                 pool_recycle=60
             )
             return engine
